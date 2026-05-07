@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   timetravel:
     build:
@@ -11,6 +10,8 @@ services:
     environment:
       - TT_HOST=0.0.0.0
       - TT_PORT=8080
+      # Set this to connect to NeonDB / Supabase / any PostgreSQL
+      # - TT_PG_CONNECTION=postgresql://user:pass@host:5432/db?sslmode=require
 
 volumes:
   tt_data:
