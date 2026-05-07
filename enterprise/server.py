@@ -172,18 +172,19 @@ async def dashboard():
     """
 
     # Tables section
-    tables_html = "<div class='section'><h2>📊 Tracked Tables</h2><table class='data-table'><tr><th>Table</th><th>Changes</th><th>Actions</th></tr>"
+    tables_html = "<div class='card'><div class='card-header'><h2>📊 Tracked Tables</h2></div><div class='card-body'><table class='data-table'><tr><th>Table</th><th>Changes</th><th></th></tr>"
     for t in sorted(stats['changes_per_table'].keys()):
         tables_html += f"<tr><td>{t}</td><td>{stats['changes_per_table'][t]}</td>"
-        tables_html += f"<td><a href='/table/{t}' class='btn btn-sm'>View History</a></td></tr>"
-    tables_html += "</table></div>"
+        tables_html += f"<td style='text-align:right'><a href='/table/{t}' class='btn btn-sm'>View History</a></td></tr>"
+    tables_html += "</table></div></div>"
 
     # Recent activity
-    recent_html = "<div class='section'><h2>⏱️ Recent Activity</h2><table class='data-table'><tr><th>ID</th><th>Table</th><th>Op</th><th>Time</th></tr>"
+    recent_html = "<div class='card'><div class='card-header'><h2>⏱️ Recent Activity</h2></div><div class='card-body'><table class='data-table'><tr><th>ID</th><th>Table</th><th>Op</th><th>Time</th></tr>"
     for r in stats['recent']:
         op = r[2] if len(r) > 2 else r['operation']
-        recent_html += f"<tr><td>#{r[0]}</td><td>{r[1]}</td><td><span class='op-{op.lower()}'>{op}</span></td><td>{str(r[3])[:19]}</td></tr>"
-    recent_html += "</table></div>"
+        op_label = op.lower()
+        recent_html += f"<tr><td style='color:var(--text-muted)'>#{r[0]}</td><td>{r[1]}</td><td><span class='op-badge {op_label}'>{op}</span></td><td style='color:var(--text-muted)'>{str(r[3])[:19]}</td></tr>"
+    recent_html += "</table></div></div>"
 
     content = cards + tables_html + recent_html
     return render_html(content, "Dashboard")
@@ -218,13 +219,13 @@ async def table_view(table_name: str):
         conn.close()
 
     content = f"""
-    <div class="section">
+    <div class='card'>
         <a href="/" class="back-link">← Back to Dashboard</a>
         <h2>📋 Table: {table_name}</h2>
         <p class="text-muted">{total} total changes</p>
     </div>
 
-    <div class="section">
+    <div class='card'>
         <h3>🕰️ Time Travel Query</h3>
         <div class="time-travel-bar">
             <input type="datetime-local" id="tt-time" class="input" value="2024-01-01T00:00">
@@ -234,7 +235,7 @@ async def table_view(table_name: str):
         <pre id="tt-output" class="code-block" style="display:none;"></pre>
     </div>
 
-    <div class="section">
+    <div class='card'>
         <h3>📝 Change History</h3>
         <table class="data-table">
             <tr><th>ID</th><th>Operation</th><th>Row</th><th>Timestamp</th><th>Checksum</th></tr>
@@ -263,7 +264,7 @@ async def reports_page():
     reports = sorted(os.listdir(REPORT_DIR)) if os.path.exists(REPORT_DIR) else []
 
     content = """
-    <div class="section">
+    <div class='card'>
         <h2>📋 SOC 2 Evidence Report Center</h2>
         <p class="text-muted">Generate and download auditor-ready compliance evidence reports.</p>
     </div>
@@ -355,11 +356,11 @@ async def serve_report(filename: str):
 async def logs_page():
     stats = get_chain_stats()
     content = f"""
-    <div class="section">
+    <div class='card'>
         <h2>📝 Change Log</h2>
         <p class="text-muted">{stats['total_changes']} total entries (showing last 200)</p>
     </div>
-    <div class="section">
+    <div class='card'>
         <table class="data-table">
             <tr><th>ID</th><th>Table</th><th>Row</th><th>Operation</th><th>Timestamp</th><th>Checksum</th></tr>
     """
@@ -392,12 +393,12 @@ async def verify_page():
     status_icon = "✅" if result["status"] == "PASS" else "❌"
 
     content = f"""
-    <div class="section" style="text-align: center; padding: 40px;">
+    <div class='card' style="text-align: center; padding: 40px;">
         <div style="font-size: 64px; margin-bottom: 16px;">{status_icon}</div>
         <h2 style="color: {status_color};">Chain Verification: {result['status']}</h2>
         <p class="text-muted">{result['total']} entries verified</p>
     </div>
-    <div class="section">
+    <div class='card'>
         <table class="data-table">
             <tr><th>Metric</th><th>Value</th></tr>
             <tr><td>Total Entries</td><td>{result['total']}</td></tr>
@@ -419,7 +420,7 @@ async def verify_page():
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page():
     content = f"""
-    <div class="section">
+    <div class='card'>
         <h2>⚙️ Settings</h2>
         <div class="settings-grid">
             <div class="setting-card">
@@ -645,135 +646,300 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <title>{{TITLE}} — Shayntech TimeTravel Enterprise</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --border: #334155;
-    --text: #e2e8f0;
-    --text-dim: #64748b;
-    --accent: #a78bfa;
-    --accent2: #4f46e5;
-    --green: #34d399;
-    --yellow: #fbbf24;
-    --red: #fb7185;
-    --cyan: #22d3ee;
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface2: #1f1f23;
+    --border: #27272a;
+    --border-light: #3f3f46;
+    --text: #fafafa;
+    --text-dim: #a1a1aa;
+    --text-muted: #71717a;
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,0.15);
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,0.1);
+    --yellow: #eab308;
+    --yellow-bg: rgba(234,179,8,0.1);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,0.1);
+    --cyan: #06b6d4;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px 0 rgba(0,0,0,0.3), 0 1px 2px -1px rgba(0,0,0,0.3);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg); color: var(--text); min-height: 100vh;
+    font-feature-settings: 'salt' 1, 'cv01' 1, 'cv11' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   .layout { display: flex; min-height: 100vh; }
+
+  /* ─── SIDEBAR ─── */
   .sidebar {
-    width: 240px; background: #0a0f1e; border-right: 1px solid var(--border);
-    padding: 20px 0; flex-shrink: 0;
+    width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 0; flex-shrink: 0; display: flex; flex-direction: column;
   }
   .sidebar-brand {
-    padding: 0 20px 20px; border-bottom: 1px solid var(--border);
-    font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;
+    padding: 20px 20px 16px; display: flex; align-items: center; gap: 12px;
   }
-  .sidebar-brand span { background: linear-gradient(135deg, #a78bfa, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .sidebar-nav { padding: 12px 0; }
+  .brand-logo {
+    width: 32px; height: 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; box-shadow: 0 0 20px rgba(99,102,241,0.3);
+  }
+  .brand-logo svg { width: 18px; height: 18px; }
+  .brand-text {
+    font-size: 15px; font-weight: 700; letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #fff 30%, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .sidebar-nav { padding: 8px 8px; flex: 1; }
   .nav-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 20px; color: var(--text-dim); text-decoration: none;
-    font-size: 13px; transition: all 0.2s;
+    padding: 9px 12px; color: var(--text-dim); text-decoration: none;
+    font-size: 13px; font-weight: 500; border-radius: var(--radius-sm);
+    transition: all 0.15s; margin-bottom: 1px;
   }
-  .nav-item:hover, .nav-item.active { background: rgba(167, 139, 250, 0.1); color: var(--text); }
-  .nav-item.active { border-right: 3px solid var(--accent); }
-  .nav-icon { font-size: 16px; }
-  .sidebar-divider { height: 1px; background: var(--border); margin: 8px 20px; }
-  .main { flex: 1; padding: 30px; overflow-y: auto; }
-  .main-header { margin-bottom: 24px; }
-  .main-header h1 { font-size: 22px; font-weight: 700; }
-  .main-header p { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .nav-item.active { background: var(--accent-glow); color: var(--accent); }
+  .nav-icon { font-size: 15px; width: 20px; text-align: center; opacity: 0.8; }
+  .nav-item.active .nav-icon { opacity: 1; }
+  .nav-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+  .sidebar-footer {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted); line-height: 1.4;
+  }
+
+  /* ─── MAIN ─── */
+  .main { flex: 1; padding: 0; overflow-y: auto; }
+  .main-inner { max-width: 1200px; margin: 0 auto; padding: 32px 40px; }
+  .main-header { margin-bottom: 28px; }
+  .main-header h1 {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .main-header p { color: var(--text-muted); font-size: 13px; }
+  .page-title-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-title-bar h1 {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  }
+
+  /* ─── STATS GRID ─── */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
   .stat-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px; display: flex; align-items: center; gap: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    display: flex; align-items: center; gap: 16px;
+    transition: border-color 0.15s;
   }
-  .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
-  .stat-value { font-size: 28px; font-weight: 700; }
-  .stat-label { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .stat-card:hover { border-color: var(--border-light); }
+  .stat-icon {
+    width: 44px; height: 44px; border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .stat-info { min-width: 0; }
+  .stat-value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
+
+  /* ─── CARDS / SECTIONS ─── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .card-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-header h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-body { padding: 0; }
+
+  /* ─── TABLE ─── */
+  .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
   .data-table th {
-    background: #0a0f1e; padding: 10px 12px; text-align: left;
-    font-weight: 600; font-size: 11px; color: var(--text-dim); text-transform: uppercase;
-    border-bottom: 1px solid var(--border);
+    padding: 10px 20px; text-align: left;
+    font-weight: 600; font-size: 11px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0;
   }
-  .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-  .data-table tr:hover td { background: rgba(167, 139, 250, 0.05); }
-  .op-insert { color: var(--green); font-weight: 600; }
-  .op-update { color: var(--yellow); font-weight: 600; }
-  .op-delete { color: var(--red); font-weight: 600; }
-  .op-baseline { color: var(--text-dim); }
+  .data-table td {
+    padding: 11px 20px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-size: 13px;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Operations */
+  .op-insert { color: var(--green); }
+  .op-update { color: var(--yellow); }
+  .op-delete { color: var(--red); }
+  .op-baseline { color: var(--text-muted); }
+  .op-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .op-badge.insert { background: var(--green-bg); color: var(--green); }
+  .op-badge.update { background: var(--yellow-bg); color: var(--yellow); }
+  .op-badge.delete { background: var(--red-bg); color: var(--red); }
+  .op-badge.baseline { background: rgba(113,113,122,0.1); color: var(--text-dim); }
+
+  /* ─── BUTTONS ─── */
   .btn {
     display: inline-flex; align-items: center; gap: 6px;
-    background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff;
-    border: none; padding: 8px 16px; border-radius: 8px; font-size: 12px;
-    font-weight: 600; cursor: pointer; text-decoration: none; transition: opacity 0.2s;
+    background: var(--accent); color: #fff;
+    border: none; padding: 8px 14px; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    text-decoration: none; transition: all 0.15s;
+    font-family: inherit;
   }
-  .btn:hover { opacity: 0.9; }
-  .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-  .btn-secondary:hover { border-color: var(--accent); }
-  .btn-sm { padding: 4px 10px; font-size: 11px; }
-  .back-link { color: var(--accent); text-decoration: none; font-size: 13px; display: inline-block; margin-bottom: 12px; }
-  .back-link:hover { text-decoration: underline; }
-  .section { margin-bottom: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
-  .section h2 { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
-  .section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .text-muted { color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
-  .hash { font-family: monospace; font-size: 11px; color: var(--text-dim); }
-  .code-block { background: #0a0f1e; border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-size: 12px; font-family: monospace; overflow-x: auto; color: var(--text); margin-top: 8px; white-space: pre-wrap; }
-  .input { background: #0a0f1e; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 13px; }
-  .input:focus { outline: none; border-color: var(--accent); }
-  .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-  .report-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: border-color 0.2s; }
-  .report-card:hover { border-color: var(--accent); }
-  .report-icon { font-size: 32px; margin-bottom: 8px; }
-  .report-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
-  .report-card p { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.5; }
-  .report-actions { display: flex; gap: 8px; }
-  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-  .setting-card { background: #0a0f1e; border: 1px solid var(--border); border-radius: 10px; padding: 16px; font-size: 12px; }
-  .setting-card h3 { font-size: 14px; margin-bottom: 8px; }
-  .setting-card code { background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; font-size: 11px; word-break: break-all; }
-  .time-travel-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .btn:hover { background: #5558e6; box-shadow: 0 0 20px var(--accent-glow); }
+  .btn-secondary {
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .btn-secondary:hover { border-color: var(--border-light); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .back-link {
+    color: var(--accent); text-decoration: none; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px;
+  }
+  .back-link:hover { opacity: 0.8; }
+
+  /* ─── TIME TRAVEL ─── */
+  .time-travel-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .input {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text);
+    font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+  }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .code-block {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 16px;
+    font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    overflow-x: auto; color: var(--text); margin-top: 12px;
+    white-space: pre-wrap; line-height: 1.5;
+  }
+  .hash { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+
+  /* ─── REPORTS ─── */
+  .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .report-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    transition: all 0.15s;
+  }
+  .report-card:hover { border-color: var(--accent); box-shadow: 0 0 30px var(--accent-glow); }
+  .report-icon { width: 40px; height: 40px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 12px; background: var(--accent-glow); }
+  .report-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .report-card p { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+  .report-actions { display: flex; gap: 6px; }
+
+  /* ─── SETTINGS ─── */
+  .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .setting-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; font-size: 12px;
+  }
+  .setting-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .setting-card code { background: var(--bg); padding: 4px 8px; border-radius: 4px; font-size: 11px; word-break: break-all; display: block; margin-top: 4px; }
+  .setting-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .setting-item:last-child { border-bottom: none; }
+  .setting-label { color: var(--text-muted); }
+  .setting-value { color: var(--text); font-weight: 500; }
+
+  /* ─── MISC ─── */
+  .text-muted { color: var(--text-muted); font-size: 12px; }
   .file-list { list-style: none; }
-  .file-list li { padding: 6px 0; }
+  .file-list li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .file-list li:last-child { border-bottom: none; }
   .file-list a { color: var(--accent); text-decoration: none; font-size: 12px; }
-  .file-list a:hover { text-decoration: underline; }
+  .file-list a:hover { opacity: 0.8; }
+  .file-size { color: var(--text-muted); font-size: 11px; }
+
+  /* ─── BADGES ─── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+  .badge-pass { background: var(--green-bg); color: var(--green); }
+  .badge-fail { background: var(--red-bg); color: var(--red); }
+
+  /* ─── MICRO ─── */
+  .section-wrap { margin-bottom: 12px; }
+  .inline-icon { display: inline-flex; align-items: center; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
 </style>
 </head>
 <body>
 <div class="layout">
+  <!-- Sidebar -->
   <div class="sidebar">
-    <div class="sidebar-brand">🔮 <span>TimeTravel</span></div>
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <span class="brand-text">TimeTravel</span>
+    </div>
     <div class="sidebar-nav">
       <a href="/" class="nav-item active"><span class="nav-icon">📊</span> Dashboard</a>
       <a href="/logs" class="nav-item"><span class="nav-icon">📝</span> Change Log</a>
       <a href="/reports" class="nav-item"><span class="nav-icon">📋</span> SOC 2 Reports</a>
       <a href="/verify" class="nav-item"><span class="nav-icon">🔗</span> Chain Verify</a>
-      <div class="sidebar-divider"></div>
+      <div class="nav-divider"></div>
       <a href="/settings" class="nav-item"><span class="nav-icon">⚙️</span> Settings</a>
     </div>
-    <div class="sidebar-footer">Shayntech TimeTravel Enterprise<br>v0.1.0</div>
-  </div>
-  <div class="main">
-    <div class="main-header">
-      <h1>{{TITLE}}</h1>
-      <p>Shayntech TimeTravel — Git for your database. SOC 2 evidence built in.</p>
+    <div class="sidebar-footer">
+      Shayntech TimeTravel<br>
+      <span style="color:var(--text-muted)">Enterprise Edition v0.1.0</span>
     </div>
-    {{CONTENT}}
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+    <div class="main-inner">
+      <div class="main-header">
+        <h1>{{TITLE}}</h1>
+        <p>Immutable hash chain tracking &amp; SOC 2 evidence</p>
+      </div>
+      {{CONTENT}}
+    </div>
   </div>
 </div>
+
 <script>
 function queryTimeTravel(table) {
-  const time = document.getElementById('tt-time').value;
+  const time = document.getElementById('tt-time')?.value;
   const result = document.getElementById('tt-result');
   const output = document.getElementById('tt-output');
+  if (!time || !result || !output) return;
   result.textContent = '⏳ Querying...';
   output.style.display = 'none';
   fetch('/api/query?table=' + encodeURIComponent(table) + '&at=' + encodeURIComponent(time))
