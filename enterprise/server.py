@@ -256,8 +256,134 @@ async def api_query(table: str, at: str):
     db = get_db()
     results = db.query_at(at, table)
     db.close()
+    # Save to query history
+    _save_query(table, at, len(results))
     return {"table": table, "at": at, "rows": len(results), "data": results}
 
+
+# ─── QUERY HISTORY STORAGE ────────────────────────────
+QUERY_HISTORY_FILE = os.path.join(DATA_DIR, "query_history.json")
+
+def _load_query_history(max_items=20):
+    if os.path.exists(QUERY_HISTORY_FILE):
+        with open(QUERY_HISTORY_FILE) as f:
+            hist = json.load(f)
+        return hist[-max_items:]
+    return []
+
+def _save_query(table, timestamp, rows_count, sql=None):
+    hist = _load_query_history(100)
+    entry = {
+        "table": table,
+        "at": timestamp,
+        "rows": rows_count,
+        "sql": sql or f"timequery({table} @ {timestamp})",
+        "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    hist.append(entry)
+    os.makedirs(os.path.dirname(QUERY_HISTORY_FILE), exist_ok=True)
+    with open(QUERY_HISTORY_FILE, "w") as f:
+        json.dump(hist[-50:], f, indent=2)
+    return entry
+
+
+# ─── QUERY PAGE ──────────────────────────────────────────
+
+@app.get("/query", response_class=HTMLResponse)
+async def query_page():
+    tables = get_table_list()
+    history = _load_query_history()
+    
+    # Build table options
+    table_options = "".join(f'<option value="{t}">{t}</option>' for t in sorted(tables))
+    
+    # Build history table
+    history_rows = ""
+    for h in reversed(history):
+        icon = "🔮"
+        history_rows += f"""
+        <tr>
+            <td style='color:var(--text-muted);font-size:11px'>{h['time'][:16]}</td>
+            <td>{h['table']}</td>
+            <td style='color:var(--text-muted)'>{h['at']}</td>
+            <td><span class='badge badge-pass'>{h['rows']} rows</span></td>
+            <td><button class='btn btn-sm' onclick=\"document.getElementById('tt-table').value='{h['table']}';document.getElementById('tt-time').value='{h['at']}';runQuery()\">↻ Replay</button></td>
+        </tr>"""
+    
+    if not history:
+        history_rows = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">No queries yet. Run a time travel query above.</td></tr>'
+    
+    content = f"""
+    <div class="card">
+        <div class="card-header">
+            <h2>🔮 Time Travel Query</h2>
+            <span style="font-size:11px;color:var(--text-muted)">Query your database as it existed at any point in time</span>
+        </div>
+        <div class="card-body" style="padding:20px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                <div>
+                    <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Table</label>
+                    <select id="tt-table" class="input" style="width:100%">
+                        {table_options}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Point in Time</label>
+                    <input type="datetime-local" id="tt-time" class="input" style="width:100%" value="2024-01-01T00:00">
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+                <button onclick="runQuery()" class="btn" style="flex:1;justify-content:center;padding:10px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+                    🔮 Travel Back in Time
+                </button>
+                <button onclick="clearResults()" class="btn btn-secondary">Clear</button>
+            </div>
+            <div id="tt-status" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;min-height:18px"></div>
+            <pre id="tt-output" class="code-block" style="display:none;max-height:400px;overflow:auto"></pre>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>📜 Query History</h2>
+            <span style="font-size:11px;color:var(--text-muted)">Previously run time travel queries</span>
+        </div>
+        <div class="card-body">
+            <table class="data-table">
+                <tr><th>Time</th><th>Table</th><th>Snapshot</th><th>Results</th><th></th></tr>
+                {history_rows}
+            </table>
+        </div>
+    </div>
+
+    <script>
+    function runQuery() {{
+        const table = document.getElementById('tt-table').value;
+        const time = document.getElementById('tt-time').value;
+        const status = document.getElementById('tt-status');
+        const output = document.getElementById('tt-output');
+        if (!table || !time) {{ status.textContent = '❌ Please select a table and time'; return; }}
+        status.textContent = '⏳ Querying...';
+        output.style.display = 'none';
+        fetch('/api/query?table=' + encodeURIComponent(table) + '&at=' + encodeURIComponent(time))
+            .then(r => r.json())
+            .then(d => {{
+                status.textContent = '✅ Found ' + d.rows + ' rows as of ' + d.at;
+                output.textContent = JSON.stringify(d.data, null, 2);
+                output.style.display = 'block';
+                // Reload page to show updated history
+                setTimeout(() => location.reload(), 500);
+            }})
+            .catch(e => {{ status.textContent = '❌ Error: ' + e; }});
+    }}
+    function clearResults() {{
+        document.getElementById('tt-status').textContent = '';
+        document.getElementById('tt-output').style.display = 'none';
+    }}
+    </script>
+    """
+    return render_html(content, "Time Travel Query")
 
 @app.get("/reports", response_class=HTMLResponse)
 async def reports_page():
@@ -909,12 +1035,37 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <span class="brand-text">TimeTravel</span>
     </div>
     <div class="sidebar-nav">
-      <a href="/" class="nav-item active"><span class="nav-icon">📊</span> Dashboard</a>
-      <a href="/logs" class="nav-item"><span class="nav-icon">📝</span> Change Log</a>
-      <a href="/reports" class="nav-item"><span class="nav-icon">📋</span> SOC 2 Reports</a>
-      <a href="/verify" class="nav-item"><span class="nav-icon">🔗</span> Chain Verify</a>
+      <a href="/" class="nav-item active">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </span> Dashboard
+      </a>
+      <a href="/query" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+        </span> Time Travel
+      </a>
+      <a href="/logs" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </span> Change Log
+      </a>
+      <a href="/reports" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+        </span> SOC 2 Reports
+      </a>
+      <a href="/verify" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+        </span> Chain Verify
+      </a>
       <div class="nav-divider"></div>
-      <a href="/settings" class="nav-item"><span class="nav-icon">⚙️</span> Settings</a>
+      <a href="/settings" class="nav-item">
+        <span class="nav-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </span> Settings
+      </a>
     </div>
     <div class="sidebar-footer">
       Shayntech TimeTravel<br>
