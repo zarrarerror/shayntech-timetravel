@@ -8,8 +8,19 @@
 Timetravel adds **time travel queries** and **SOC 2 technical evidence** to any SQLite database. Every change is tracked in an immutable hash chain — like GitHub, but for your data.
 
 ```bash
-pip install shayntech-timetravel
-timetravel init mydb.db
+# Install from GitHub
+pip install git+https://github.com/zarrarerror/shayntech-timetravel.git
+
+# Or clone and run
+git clone https://github.com/zarrarerror/shayntech-timetravel.git
+cd shayntech-timetravel
+pip install -e .
+
+# Run a complete demo
+timetravel demo
+
+# Or use with your own database
+timetravel init mydatabase.db
 timetravel query --at "2025-01-01" --table users
 timetravel report --type all
 ```
