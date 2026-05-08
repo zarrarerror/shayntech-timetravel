@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TimeTravel — Git for Your Database | Shayntech</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+        /* ===== Reset & Base ===== */
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth}
+        body{font-family:'Inter',-apple-system,system-ui,sans-serif;background:#08090a;color:#e4e4e7;line-height:1.6;-webkit-font-smoothing:antialiased}
+        code,pre{font-family:'JetBrains Mono',monospace}
+        a{color:#a78bfa;text-decoration:none;transition:color .2s}
+        a:hover{color:#c4b5fd}
+        img{max-width:100%;display:block}
+        .container{max-width:1200px;margin:0 auto;padding:0 24px}
+
+        /* ===== Brand ===== */
+        :root{
+            --brand:#4f46e5;
+            --brand-light:#a78bfa;
+            --brand-gradient:linear-gradient(135deg,#4f46e5,#7c3aed);
+            --text-primary:#e4e4e7;
+            --text-secondary:#a1a1aa;
+            --text-tertiary:#71717a;
+            --text-quaternary:#52525b;
+            --bg-page:#08090a;
+            --bg-panel:#0d0e12;
+            --bg-surface:#121317;
+            --bg-elevated:#191b22;
+            --border-subtle:rgba(255,255,255,0.04);
+            --border-standard:rgba(255,255,255,0.07);
+        }
+
+        /* ===== Navbar ===== */
+        .navbar{
+            position:fixed;top:0;left:0;right:0;z-index:100;
+            background:rgba(8,9,10,0.85);backdrop-filter:blur(16px);
+            border-bottom:1px solid var(--border-subtle);
+        }
+        .navbar .container{display:flex;align-items:center;justify-content:space-between;height:68px}
+        .nav-logo{display:flex;align-items:center;gap:12px;font-weight:700;font-size:20px;color:var(--text-primary)}
+        .nav-logo svg{width:36px;height:36px}
+        .nav-links{display:flex;align-items:center;gap:32px;list-style:none}
+        .nav-links a{font-size:14px;font-weight:500;color:var(--text-secondary);transition:color .2s}
+        .nav-links a:hover{color:var(--text-primary)}
+        .nav-cta{
+            display:inline-flex;align-items:center;gap:8px;
+            background:var(--brand-gradient);color:#fff;
+            padding:10px 24px;border-radius:8px;font-weight:600;font-size:14px;
+            transition:opacity .2s,transform .2s
+        }
+        .nav-cta:hover{opacity:.9;transform:translateY(-1px);color:#fff}
+        .mobile-toggle{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+        .mobile-toggle span{display:block;width:24px;height:2px;background:var(--text-secondary);border-radius:2px;transition:all .3s}
+
+        /* ===== Hero ===== */
+        .hero{
+            padding:140px 0 80px;text-align:center;
+            background:radial-gradient(ellipse 60% 50% at 50% 20%,rgba(79,70,229,0.12),transparent)
+        }
+        .hero-tag{
+            display:inline-flex;align-items:center;gap:8px;
+            background:rgba(79,70,229,0.12);border:1px solid rgba(79,70,229,0.25);
+            color:var(--brand-light);padding:8px 18px;border-radius:100px;
+            font-size:13px;font-weight:500;margin-bottom:28px
+        }
+        .hero h1{font-size:64px;font-weight:800;line-height:1.1;letter-spacing:-1.5px;margin-bottom:20px}
+        .hero h1 span{background:var(--brand-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .hero p{font-size:20px;color:var(--text-secondary);max-width:640px;margin:0 auto 40px}
+        .hero-buttons{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+        .btn-primary{
+            display:inline-flex;align-items:center;gap:10px;
+            background:var(--brand-gradient);color:#fff;
+            padding:14px 32px;border-radius:10px;font-weight:600;font-size:16px;
+            transition:opacity .2s,transform .2s;border:none;cursor:pointer
+        }
+        .btn-primary:hover{opacity:.9;transform:translateY(-2px);color:#fff}
+        .btn-secondary{
+            display:inline-flex;align-items:center;gap:10px;
+            background:var(--bg-surface);color:var(--text-primary);
+            padding:14px 32px;border-radius:10px;font-weight:600;font-size:16px;
+            border:1px solid var(--border-standard);cursor:pointer;
+            transition:background .2s,border-color .2s
+        }
+        .btn-secondary:hover{background:var(--bg-elevated);border-color:rgba(255,255,255,0.12)}
+
+        /* ===== Sections Common ===== */
+        section{padding:100px 0}
+        .section-label{
+            display:inline-flex;align-items:center;gap:8px;
+            color:var(--brand-light);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+            margin-bottom:12px
+        }
+        .section-title{font-size:40px;font-weight:700;line-height:1.2;letter-spacing:-0.5px;margin-bottom:16px}
+        .section-sub{font-size:18px;color:var(--text-secondary);max-width:560px;margin:0 auto 48px;text-align:center}
+        .text-center{text-align:center}
+
+        /* ===== Features ===== */
+        .features{background:var(--bg-panel)}
+        .features-grid{
+            display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px
+        }
+        .feature-card{
+            background:var(--bg-surface);border:1px solid var(--border-subtle);
+            border-radius:14px;padding:32px 28px;transition:border-color .3s,transform .3s
+        }
+        .feature-card:hover{border-color:rgba(79,70,229,0.3);transform:translateY(-4px)}
+        .feature-icon{
+            width:48px;height:48px;border-radius:12px;
+            background:var(--brand-gradient);display:flex;align-items:center;justify-content:center;
+            margin-bottom:18px;font-size:22px
+        }
+        .feature-card h3{font-size:18px;font-weight:600;margin-bottom:10px}
+        .feature-card p{font-size:14px;color:var(--text-tertiary);line-height:1.7}
+
+        /* ===== How It Works ===== */
+        .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:48px}
+        .step{text-align:center;padding:0 16px}
+        .step-num{
+            width:56px;height:56px;border-radius:50%;
+            background:var(--brand-gradient);display:flex;align-items:center;justify-content:center;
+            font-size:20px;font-weight:700;margin:0 auto 20px
+        }
+        .step h3{font-size:18px;font-weight:600;margin-bottom:10px}
+        .step p{font-size:14px;color:var(--text-tertiary);line-height:1.7}
+
+        /* ===== SOC 2 Section ===== */
+        .soc2{background:var(--bg-panel)}
+        .soc2-content{display:flex;align-items:center;gap:60px}
+        .soc2-text{flex:1}
+        .soc2-text .section-title{margin-bottom:20px}
+        .soc2-text p{color:var(--text-secondary);margin-bottom:24px;font-size:16px}
+        .soc2-badges{display:flex;gap:16px;flex-wrap:wrap}
+        .soc2-badge{
+            display:flex;align-items:center;gap:10px;
+            background:var(--bg-surface);border:1px solid var(--border-standard);
+            padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500
+        }
+        .soc2-badge svg{width:20px;height:20px;flex-shrink:0}
+        .soc2-visual{
+            flex:1;background:var(--bg-surface);border:1px solid var(--border-standard);
+            border-radius:16px;padding:40px;text-align:center
+        }
+        .soc2-visual .shield-large{font-size:72px;margin-bottom:16px}
+        .soc2-visual h3{font-size:22px;font-weight:600;margin-bottom:8px}
+        .soc2-visual p{color:var(--text-tertiary);font-size:14px}
+
+        /* ===== Open Source ===== */
+        .oss-content{display:flex;align-items:center;gap:60px}
+        .oss-visual{
+            flex:1;background:var(--bg-surface);border:1px solid var(--border-standard);
+            border-radius:16px;padding:40px;text-align:center
+        }
+        .oss-visual .code-icon{font-size:64px;margin-bottom:16px}
+        .oss-text{flex:1}
+        .oss-text .section-title{margin-bottom:20px}
+        .oss-text p{color:var(--text-secondary);margin-bottom:24px;font-size:16px}
+        .oss-stats{display:flex;gap:32px;margin-bottom:28px}
+        .oss-stat{text-align:center}
+        .oss-stat-num{font-size:32px;font-weight:800;color:var(--text-primary)}
+        .oss-stat-label{font-size:13px;color:var(--text-tertiary);margin-top:4px}
+
+        /* ===== Footer ===== */
+        footer{
+            border-top:1px solid var(--border-subtle);
+            padding:60px 0 40px;background:var(--bg-panel)
+        }
+        .footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
+        .footer-brand p{color:var(--text-tertiary);font-size:14px;margin-top:12px;max-width:280px}
+        .footer-col h4{font-size:14px;font-weight:600;margin-bottom:16px;color:var(--text-primary)}
+        .footer-col ul{list-style:none}
+        .footer-col ul li{margin-bottom:10px}
+        .footer-col ul li a{font-size:14px;color:var(--text-tertiary);transition:color .2s}
+        .footer-col ul li a:hover{color:var(--text-primary)}
+        .footer-bottom{
+            margin-top:48px;padding-top:24px;
+            border-top:1px solid var(--border-subtle);
+            display:flex;justify-content:space-between;align-items:center;
+            font-size:13px;color:var(--text-quaternary)
+        }
+
+        /* ===== Responsive ===== */
+        @media(max-width:1200px){
+            .features-grid{grid-template-columns:repeat(2,1fr)}
+            .steps{grid-template-columns:repeat(2,1fr)}
+            .soc2-content{flex-direction:column;text-align:center}
+            .soc2-badges{justify-content:center}
+            .oss-content{flex-direction:column-reverse;text-align:center}
+            .oss-stats{justify-content:center}
+            .footer-grid{grid-template-columns:repeat(2,1fr)}
+        }
+        @media(max-width:768px){
+            .hero h1{font-size:40px}
+            .hero p{font-size:17px}
+            .section-title{font-size:30px}
+            .features-grid{grid-template-columns:1fr}
+            .steps{grid-template-columns:1fr;max-width:400px;margin:48px auto 0}
+            .nav-links,.nav-cta{display:none}
+            .mobile-toggle{display:flex}
+            .nav-links.active{display:flex;flex-direction:column;position:absolute;top:68px;left:0;right:0;background:var(--bg-panel);border-bottom:1px solid var(--border-standard);padding:20px 24px;gap:20px;align-items:flex-start}
+            .nav-links.active + .nav-cta{display:flex;position:absolute;top:240px;left:24px}
+            .soc2-visual,.oss-visual{padding:24px}
+            .footer-grid{grid-template-columns:1fr;text-align:center}
+            .footer-brand p{max-width:none}
+            .footer-bottom{flex-direction:column;gap:8px}
+        }
+        @media(max-width:480px){
+            .hero{padding:120px 0 60px}
+            .hero h1{font-size:32px}
+            .hero p{font-size:15px}
+            .hero-buttons{flex-direction:column;align-items:center}
+            .btn-primary,.btn-secondary{width:100%;justify-content:center}
+            .section-title{font-size:26px}
+            .feature-card{padding:24px 20px}
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== Navbar ===== -->
+<nav class="navbar">
+    <div class="container">
+        <a href="#" class="nav-logo">
+            <!-- Logo placeholder: replace with shayntech.com/images/logo.jpeg -->
+            <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="36" height="36" rx="10" fill="url(#s-grad)"/>
+                <text x="18" y="24" font-size="20" font-weight="800" fill="#fff" text-anchor="middle" font-family="Inter,sans-serif">S</text>
+                <defs>
+                    <linearGradient id="s-grad" x1="0" y1="0" x2="36" y2="36">
+                        <stop stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+            TimeTravel
+        </a>
+        <button class="mobile-toggle" aria-label="Toggle menu" onclick="document.querySelector('.nav-links').classList.toggle('active')">
+            <span></span><span></span><span></span>
+        </button>
+        <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#soc2">SOC 2</a></li>
+            <li><a href="#open-source">Open Source</a></li>
+        </ul>
+        <a href="dashboard.html" class="nav-cta">Dashboard →</a>
+    </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<section class="hero">
+    <div class="container">
+        <span class="hero-tag">⚡ v2.4.0 — Now with Chain Validation</span>
+        <h1><span>Git for</span> Your Database</h1>
+        <p>Time-travel through your database history, roll back with surgical precision, and prove data integrity with cryptographic chain validation.</p>
+        <div class="hero-buttons">
+            <a href="dashboard.html" class="btn-primary">🚀 Open Dashboard</a>
+            <a href="#how-it-works" class="btn-secondary">▶ See How It Works</a>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Features ===== -->
+<section class="features" id="features">
+    <div class="container">
+        <div class="text-center">
+            <span class="section-label">✦ Features</span>
+            <h2 class="section-title">Everything You Need to<br />Control Database History</h2>
+            <p class="section-sub">Snapshot, restore, audit, and validate — all from a single dashboard.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📸</div>
+                <h3>Point-in-Time Snapshots</h3>
+                <p>Capture your entire database state in milliseconds. Each snapshot is immutable and cryptographically signed.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⏪</div>
+                <h3>Surgical Rollbacks</h3>
+                <p>Roll back to any point in time with zero downtime. Only changed rows are restored — your latest writes stay safe.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔗</div>
+                <h3>Chain Validation</h3>
+                <p>Every snapshot is linked via SHA-256 hashes into an auditable chain. Tamper-proof by design.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>Query History</h3>
+                <p>Track every DDL and DML statement alongside your snapshots. See exactly what changed and when.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>SOC 2 Compliance</h3>
+                <p>Auto-generated compliance reports with signed audit trails. Ready for your next SOC 2 review.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <h3>Multi-Database</h3>
+                <p>PostgreSQL, MySQL, MariaDB, SQL Server — manage all your databases from one place.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== How It Works ===== -->
+<section id="how-it-works">
+    <div class="container">
+        <div class="text-center">
+            <span class="section-label">⚙️ How It Works</span>
+            <h2 class="section-title">Three Steps to<br />Database Time Travel</h2>
+            <p class="section-sub">No agents, no sidecars, no complex setup. Just connect and go.</p>
+        </div>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <h3>Connect Your Database</h3>
+                <p>Point TimeTravel at your existing database. We use logical replication — zero impact on production performance.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <h3>Snapshot on Demand</h3>
+                <p>Trigger a snapshot from the dashboard, via API, or on a schedule. Each snapshot captures every row at that instant.</p>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <h3>Restore &amp; Validate</h3>
+                <p>Browse snapshots, compare schemas, roll back with confidence. Every operation is logged and chain-validated.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== SOC 2 Section ===== -->
+<section class="soc2" id="soc2">
+    <div class="container">
+        <div class="soc2-content">
+            <div class="soc2-text">
+                <span class="section-label">🔐 SOC 2</span>
+                <h2 class="section-title">Audit-Ready<br />Compliance</h2>
+                <p>Every snapshot, rollback, and query is signed, timestamped, and stored in an immutable chain. Generate a complete SOC 2 evidence package with one click.</p>
+                <div class="soc2-badges">
+                    <span class="soc2-badge">
+                        <svg viewBox="0 0 20 20" fill="none"><path d="M10 2L3 6v4c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-7-4zm0 11.17l-3.59-3.59L7.83 8.17 10 10.34l4.17-4.17 1.42 1.41L10 13.17z" fill="#4f46e5"/></svg>
+                        SOC 2 Type II
+                    </span>
+                    <span class="soc2-badge">
+                        <svg viewBox="0 0 20 20" fill="none"><path d="M10 2L3 6v4c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-7-4z" fill="#4f46e5"/></svg>
+                        Chain Audit
+                    </span>
+                    <span class="soc2-badge">
+                        <svg viewBox="0 0 20 20" fill="none"><rect x="4" y="3" width="12" height="14" rx="2" stroke="#4f46e5" stroke-width="1.5"/><path d="M7 7h6M7 10h6M7 13h4" stroke="#4f46e5" stroke-width="1.5"/></svg>
+                        Signed Reports
+                    </span>
+                </div>
+            </div>
+            <div class="soc2-visual">
+                <div class="shield-large">🛡️</div>
+                <h3>Immutable Audit Trail</h3>
+                <p>Every snapshot cryptographically linked via<br />SHA-256 chain — proof of integrity since day one.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Open Source ===== -->
+<section id="open-source">
+    <div class="container">
+        <div class="oss-content">
+            <div class="oss-visual">
+                <div class="code-icon">&lt;/&gt;</div>
+                <h3 style="font-size:20px;font-weight:600;margin-bottom:8px">MIT Licensed</h3>
+                <p style="color:var(--text-tertiary);font-size:14px">Fork it, self-host it,<br />build on top of it.</p>
+            </div>
+            <div class="oss-text">
+                <span class="section-label">📖 Open Source</span>
+                <h2 class="section-title">Built in the Open,<br />for Everyone</h2>
+                <p>TimeTravel is MIT-licensed and developed entirely in public. No hidden telemetry, no proprietary lock-in. Your data stays yours.</p>
+                <div class="oss-stats">
+                    <div class="oss-stat">
+                        <div class="oss-stat-num">4.2k</div>
+                        <div class="oss-stat-label">★ GitHub Stars</div>
+                    </div>
+                    <div class="oss-stat">
+                        <div class="oss-stat-num">180+</div>
+                        <div class="oss-stat-label">Contributors</div>
+                    </div>
+                    <div class="oss-stat">
+                        <div class="oss-stat-num">14k+</div>
+                        <div class="oss-stat-label">Downloads</div>
+                    </div>
+                </div>
+                <a href="dashboard.html" class="btn-primary">View on GitHub →</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== Footer ===== -->
+<footer>
+    <div class="container">
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <!-- Logo placeholder: replace with shayntech.com/images/logo.jpeg -->
+                <a href="#" class="nav-logo">
+                    <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:32px;height:32px">
+                        <rect width="36" height="36" rx="10" fill="url(#s-grad2)"/>
+                        <text x="18" y="24" font-size="20" font-weight="800" fill="#fff" text-anchor="middle" font-family="Inter,sans-serif">S</text>
+                        <defs>
+                            <linearGradient id="s-grad2" x1="0" y1="0" x2="36" y2="36">
+                                <stop stop-color="#4f46e5"/><stop offset="1" stop-color="#7c3aed"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    TimeTravel
+                </a>
+                <p>Time-travel for your database. Built by Shayntech. Open source from day one.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Product</h4>
+                <ul>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#soc2">SOC 2</a></li>
+                    <li><a href="dashboard.html">Dashboard</a></li>
+                    <li><a href="#">Pricing</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Resources</h4>
+                <ul>
+                    <li><a href="#">Documentation</a></li>
+                    <li><a href="#">API Reference</a></li>
+                    <li><a href="#">GitHub</a></li>
+                    <li><a href="#">Changelog</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Company</h4>
+                <ul>
+                    <li><a href="#">About</a></li>
+                    <li><a href="#">Blog</a></li>
+                    <li><a href="#">Careers</a></li>
+                    <li><a href="#">Contact</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>© 2026 Shayntech. All rights reserved.</span>
+            <span>MIT License · Privacy · Terms</span>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>
