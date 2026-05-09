@@ -2,21 +2,23 @@
 
 import json
 import hashlib
+import re
 import sqlite3
-import time
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 
 class HashChain:
     """Immutable hash chain for change verification.
-    
+
     Each change is hashed with the previous change's hash to form
     a tamper-evident chain. Like a blockchain, but simple.
     """
 
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._lock = threading.Lock()
         self._init_history_table()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -52,41 +54,41 @@ class HashChain:
         return row["checksum"] if row else None
 
     def compute_hash(self, entry: dict) -> str:
-        """Compute SHA-256 hash of a change entry."""
         raw = json.dumps(entry, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def record(self, table: str, row_id: str, operation: str, 
+    def record(self, table: str, row_id: str, operation: str,
                old_data: dict, new_data: dict) -> dict:
-        """Record a change and return the entry."""
-        prev = self.get_last_checksum()
-        
-        entry = {
-            "table": table,
-            "row_id": str(row_id),
-            "operation": operation,
-            "old_data": old_data,
-            "new_data": new_data,
-            "prev_checksum": prev or "",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        
-        checksum = self.compute_hash(entry)
-        entry["checksum"] = checksum
-        
-        conn = self._get_conn()
-        conn.execute(
-            """INSERT INTO _tt_history 
-               (table_name, row_id, operation, old_data, new_data, checksum, prev_checksum, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (table, row_id, operation, 
-             json.dumps(old_data) if old_data else None,
-             json.dumps(new_data) if new_data else None,
-             checksum, prev, entry["timestamp"])
-        )
-        conn.commit()
-        conn.close()
-        return entry
+        """Record a change and return the entry. Thread-safe."""
+        with self._lock:
+            prev = self.get_last_checksum()
+
+            entry = {
+                "table": table,
+                "row_id": str(row_id),
+                "operation": operation,
+                "old_data": old_data,
+                "new_data": new_data,
+                "prev_checksum": prev or "",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            checksum = self.compute_hash(entry)
+            entry["checksum"] = checksum
+
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT INTO _tt_history
+                   (table_name, row_id, operation, old_data, new_data, checksum, prev_checksum, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (table, row_id, operation,
+                 json.dumps(old_data) if old_data else None,
+                 json.dumps(new_data) if new_data else None,
+                 checksum, prev, entry["timestamp"])
+            )
+            conn.commit()
+            conn.close()
+            return entry
 
     def verify_chain(self) -> dict:
         """Verify the entire hash chain integrity."""
@@ -98,7 +100,7 @@ class HashChain:
         conn.close()
 
         if not rows:
-            return {"status": "PASS", "message": "No history to verify", "total": 0}
+            return {"status": "PASS", "message": "No history to verify", "total": 0, "failures": 0}
 
         failures = []
         prev_checksum = None
@@ -154,106 +156,149 @@ class TimeTravelDB:
 
     def execute(self, sql: str, params: tuple = ()) -> Any:
         """Execute SQL with automatic change capture."""
-        sql_upper = sql.strip().upper()
-        
+        sql_stripped = sql.strip()
+        sql_upper = sql_stripped.upper()
+
         if not self._capture_enabled:
             return self._conn.execute(sql, params)
-        
-        # For UPDATE/DELETE, capture old data first
+
         if sql_upper.startswith("UPDATE"):
-            self._capture_update(sql, params)
+            return self._execute_update(sql, params)
         elif sql_upper.startswith("DELETE"):
-            self._capture_delete(sql, params)
+            return self._execute_delete(sql, params)
         elif sql_upper.startswith("INSERT"):
-            pass  # Will capture via rowid after insert
-        
+            return self._execute_insert(sql, params)
+        else:
+            result = self._conn.execute(sql, params)
+            self._conn.commit()
+            return result
+
+    def _execute_insert(self, sql: str, params: tuple) -> Any:
         result = self._conn.execute(sql, params)
-        
-        if sql_upper.startswith("INSERT") and result.lastrowid:
-            self._capture_insert(sql, params, result.lastrowid)
-        
         self._conn.commit()
+        if result.lastrowid:
+            table = self._extract_table(sql)
+            row = self._conn.execute(
+                f'SELECT rowid AS tt_rid, * FROM "{table}" WHERE rowid = ?',
+                (result.lastrowid,)
+            ).fetchone()
+            if row:
+                data = dict(row)
+                rid = str(data.pop("tt_rid"))
+                self.chain.record(table, rid, "INSERT", {}, data)
         return result
 
-    def _capture_insert(self, sql: str, params: tuple, row_id: int):
-        table = self._extract_table(sql)
-        # Read back what was inserted
-        row = self._conn.execute(f"SELECT rowid AS tt_rid, * FROM \"{table}\" WHERE rowid = ?", (row_id,)).fetchone()
-        if row:
-            data = dict(row)
-            rid = str(data.pop("tt_rid"))
-            self.chain.record(table, rid, "INSERT", {}, data)
-
-    def _capture_update(self, sql: str, params: tuple):
-        table = self._extract_table(sql)
-        # Read current state before update
-        where = self._extract_where(sql)
-        if where:
-            # Simple approach: select matching rows
-            select_sql = f"SELECT rowid AS tt_rid, * FROM \"{table}\" WHERE {where}"
-            try:
-                rows = self._conn.execute(select_sql, params).fetchall()
-                for row in rows:
-                    row_dict = dict(row)
-                    rid = str(row_dict.pop("tt_rid"))
-                    self.chain.record(table, rid, "UPDATE", row_dict, {})
-            except Exception:
-                pass  # best effort capture
-
-    def _capture_delete(self, sql: str, params: tuple):
+    def _execute_update(self, sql: str, params: tuple) -> Any:
         table = self._extract_table(sql)
         where = self._extract_where(sql)
-        if where:
-            select_sql = f"SELECT rowid AS tt_rid, * FROM \"{table}\" WHERE {where}"
+
+        # Split params: SET placeholders come before WHERE placeholders
+        where_params = params
+        set_match = re.search(r'\bSET\b(.*?)\bWHERE\b', sql, re.IGNORECASE | re.DOTALL)
+        if set_match:
+            set_placeholder_count = set_match.group(1).count('?')
+            where_params = params[set_placeholder_count:]
+
+        # Capture old state before update
+        old_rows: dict[str, dict] = {}
+        if where and table != "unknown":
             try:
-                rows = self._conn.execute(select_sql, params).fetchall()
+                rows = self._conn.execute(
+                    f'SELECT rowid AS tt_rid, * FROM "{table}" WHERE {where}',
+                    where_params
+                ).fetchall()
                 for row in rows:
-                    row_dict = dict(row)
-                    rid = str(row_dict.pop("tt_rid"))
-                    self.chain.record(table, rid, "DELETE", row_dict, {})
+                    d = dict(row)
+                    rid = str(d.pop("tt_rid"))
+                    old_rows[rid] = d
             except Exception:
                 pass
 
+        result = self._conn.execute(sql, params)
+        self._conn.commit()
+
+        # Capture new state after update and record both
+        for rid, old_data in old_rows.items():
+            try:
+                new_row = self._conn.execute(
+                    f'SELECT * FROM "{table}" WHERE rowid = ?', (int(rid),)
+                ).fetchone()
+                new_data = dict(new_row) if new_row else {}
+            except Exception:
+                new_data = {}
+            self.chain.record(table, rid, "UPDATE", old_data, new_data)
+
+        return result
+
+    def _execute_delete(self, sql: str, params: tuple) -> Any:
+        table = self._extract_table(sql)
+        where = self._extract_where(sql)
+
+        # For DELETE, all params go to WHERE
+        old_rows: dict[str, dict] = {}
+        if where and table != "unknown":
+            try:
+                rows = self._conn.execute(
+                    f'SELECT rowid AS tt_rid, * FROM "{table}" WHERE {where}',
+                    params
+                ).fetchall()
+                for row in rows:
+                    d = dict(row)
+                    rid = str(d.pop("tt_rid"))
+                    old_rows[rid] = d
+            except Exception:
+                pass
+
+        result = self._conn.execute(sql, params)
+        self._conn.commit()
+
+        for rid, old_data in old_rows.items():
+            self.chain.record(table, rid, "DELETE", old_data, {})
+
+        return result
+
     def _extract_table(self, sql: str) -> str:
-        """Extract table name from SQL (simple parser)."""
-        parts = sql.split()
-        for i, p in enumerate(parts):
-            upper = p.upper()
-            if upper in ("FROM", "UPDATE", "INTO", "TABLE"):
-                if i + 1 < len(parts):
-                    return parts[i + 1].strip('"').strip("'").strip("`")
+        """Extract table name from SQL using regex."""
+        patterns = [
+            r'INSERT\s+(?:OR\s+\w+\s+)?INTO\s+[`"\[]?(\w+)[`"\]]?',
+            r'UPDATE\s+[`"\[]?(\w+)[`"\]]?',
+            r'DELETE\s+FROM\s+[`"\[]?(\w+)[`"\]]?',
+        ]
+        for pat in patterns:
+            m = re.search(pat, sql, re.IGNORECASE)
+            if m:
+                return m.group(1)
         return "unknown"
 
     def _extract_where(self, sql: str) -> str:
-        """Extract WHERE clause from SQL."""
-        idx = sql.upper().find("WHERE")
-        if idx >= 0:
-            return sql[idx + 6:]
-        return ""
+        """Extract WHERE clause body from SQL."""
+        m = re.search(
+            r'\bWHERE\b\s*(.*?)(?:\bORDER\b|\bGROUP\b|\bLIMIT\b|\bHAVING\b|$)',
+            sql, re.IGNORECASE | re.DOTALL
+        )
+        return m.group(1).strip() if m else ""
 
     def query_at(self, timestamp: str, table: str, row_id: str = None) -> list[dict]:
         """Query data as it existed at a given timestamp.
-        
-        Algorithm:
-        1. Get current state of the table
-        2. Replay changes in reverse chronological order up to target time
-        3. For each change: undo the operation to reconstruct past state
+
+        Algorithm: get current state, replay changes in reverse up to target time.
         """
-        # Get all changes up to the target timestamp, in reverse order
         conn = self.chain._get_conn()
         rows = conn.execute(
-            """SELECT * FROM _tt_history 
+            """SELECT * FROM _tt_history
                WHERE table_name = ? AND created_at > ?
                ORDER BY id DESC""",
             (table, timestamp)
         ).fetchall()
         conn.close()
 
-        # Get current state
-        cur = self._conn.execute(f"SELECT rowid AS tt_rid, * FROM \"{table}\"")
-        current = {str(r["tt_rid"]): dict(r) for r in cur.fetchall()}
+        cur = self._conn.execute(f'SELECT rowid AS tt_rid, * FROM "{table}"')
+        current = {}
+        for r in cur.fetchall():
+            d = dict(r)
+            rid = str(d.pop("tt_rid"))
+            current[rid] = d
 
-        # Replay changes in reverse (skip BASELINE — they're not changes to undo)
         for change in rows:
             if change["operation"] == "BASELINE":
                 continue
@@ -263,23 +308,19 @@ class TimeTravelDB:
             new_data = json.loads(change["new_data"]) if change["new_data"] else {}
 
             if op == "INSERT":
-                # Row didn't exist before this insert
                 current.pop(rid, None)
             elif op == "UPDATE":
-                # Restore old values
-                if rid in current:
+                if rid in current and old:
                     for k, v in old.items():
                         if k in current[rid]:
                             current[rid][k] = v
             elif op == "DELETE":
-                # Row existed before delete
                 if old:
                     current[rid] = old
 
-        # Filter by row_id if specified
         if row_id:
             return [current[row_id]] if row_id in current else []
-        
+
         return list(current.values())
 
     def close(self):

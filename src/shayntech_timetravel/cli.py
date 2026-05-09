@@ -489,6 +489,23 @@ def cmd_demo(args):
     print("=" * 60)
 
 
+def cmd_serve(args):
+    """Launch the interactive web dashboard."""
+    from .server import serve
+    db_path = args.db if hasattr(args, "db") else None
+    pg = args.pg if hasattr(args, "pg") else None
+    if not db_path and not pg:
+        print("❌ Provide a database path (e.g. timetravel serve mydb.db) or --pg <conn_str>")
+        sys.exit(1)
+    serve(
+        db_path=db_path,
+        pg_conn_str=pg,
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_browser,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="🔮 Shayntech TimeTravel — Git for your database. SOC 2 built in.",
@@ -566,6 +583,15 @@ Examples:
     p_demo = sub.add_parser("demo", help="Run a complete demo with sample data")
     p_demo.add_argument("--output", default="/tmp/shayntech-timetravel-demo", help="Output directory")
     p_demo.set_defaults(func=cmd_demo)
+
+    # serve
+    p_serve = sub.add_parser("serve", help="Launch the interactive web dashboard")
+    p_serve.add_argument("db", nargs="?", help="Path to SQLite database")
+    p_serve.add_argument("--pg", help="PostgreSQL connection string")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
+    p_serve.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
+    p_serve.set_defaults(func=cmd_serve)
 
     # Set defaults for all commands
     p_init.set_defaults(func=cmd_init)

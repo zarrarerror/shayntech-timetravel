@@ -257,6 +257,11 @@ class PgTimeTravelDB:
 
         return results
 
+    def record_update(self, table: str, pk_col: str, pk_val: Any,
+                      old_data: dict, new_data: dict) -> dict:
+        """Record an UPDATE capturing both before and after state."""
+        return self.chain.record(table, str(pk_val), "UPDATE", old_data, new_data)
+
     def query_at(self, timestamp: str, table: str, row_id: str = None) -> list[dict]:
         """Query data as it existed at a given timestamp.
 
