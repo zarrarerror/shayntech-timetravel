@@ -1,127 +1,107 @@
 # ⏮ Shayntech TimeTravel
 
-> **Accidentally deleted production data? Get it back in seconds.**
+> **Accidentally deleted production data? Get it back. Git for your database — SOC 2 built in.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![Works with PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-blue?logo=postgresql)](https://postgresql.org)
 [![Works with NeonDB](https://img.shields.io/badge/NeonDB-supported-green)](https://neon.tech)
 
-<p align="center">
-  <img src="Animation.gif" alt="Shayntech TimeTravel Demo" width="100%">
-</p>
+Shayntech TimeTravel tracks every INSERT, UPDATE, and DELETE in your database via an immutable SHA-256 hash chain. Query your data at any point in the past, compare changes between timestamps, verify tamper-evidence, and generate SOC 2 audit reports — all from the command line.
 
-**Shayntech TimeTravel** gives any PostgreSQL or SQLite database a complete time machine — query your data at any point in the past, restore deleted rows with one click, and generate SOC 2 audit reports automatically.
-
-No cloud dependency. No vendor lock-in. Fully open source.
+Works with **PostgreSQL** (NeonDB, Supabase, Railway, self-hosted) and **SQLite**.
 
 ---
 
-## ✨ What It Does
+## ✨ Features
 
-| Feature | Description |
-|---|---|
-| 🔮 **Time Travel Query** | Reconstruct your exact database state at any timestamp |
-| 🔄 **One-Click Restore** | Recover deleted rows instantly from the dashboard |
-| 📡 **Auto-Capture Triggers** | Tracks every INSERT/UPDATE/DELETE — even direct DB edits |
-| ↔️ **Data Diff** | Compare your data between any two points in time |
-| 🔗 **SHA-256 Hash Chain** | Cryptographic tamper-proof audit trail |
-| 📋 **SOC 2 Reports** | Generate compliance evidence in one click |
-| 📝 **Change Log** | Full before/after history for every row |
-| 🌑 **Dark Dashboard** | Beautiful UI — no config needed |
+- 🔮 **Time Travel Queries** — Reconstruct your database at any point in the past
+- ↔️ **Data Diff** — Compare any two timestamps side by side
+- 📝 **Row History** — Full change log for any table or row
+- 🔗 **SHA-256 Hash Chain** — Tamper-evident, cryptographically linked entries
+- ✅ **Chain Verification** — Instantly detect any unauthorized modification
+- 📋 **SOC 2 Reports** — Generate audit-ready HTML evidence (Integrity, Audit Trail, Retention)
+- 📡 **Auto-Capture Triggers** — PostgreSQL triggers track changes from any source, not just your app
 
 ---
 
 ## 🚀 Quick Start
 
-### PostgreSQL (NeonDB, Supabase, Railway, self-hosted)
-
 ```bash
 # Install
 pip install git+https://github.com/zarrarerror/shayntech-timetravel.git
 
-# Initialize tracking on your database
-timetravel init-pg "postgresql://user:pass@host/dbname"
+# ── PostgreSQL ────────────────────────────────────────────────
+# Initialize (baselines all tables + installs auto-capture triggers)
+timetravel init --pg "postgresql://user:pass@host/dbname"
 
-# Launch the dashboard
-timetravel serve --pg "postgresql://user:pass@host/dbname"
+# Query data as of any point in time
+timetravel query --pg "postgresql://..." --at "2025-01-01" --table orders
+
+# ── SQLite ────────────────────────────────────────────────────
+timetravel init mydb.db
+timetravel query mydb.db --at "2025-06-01 12:00" --table users
+
+# ── Try the demo ─────────────────────────────────────────────
+timetravel demo
 ```
-
-Open **http://localhost:8765** — your time machine is ready.
-
-### SQLite
-
-```bash
-# Initialize tracking
-timetravel init mydatabase.db
-
-# Launch the dashboard
-timetravel serve mydatabase.db
-```
-
-### Docker
-
-```bash
-# Clone the repo
-git clone https://github.com/zarrarerror/shayntech-timetravel.git
-cd shayntech-timetravel
-
-# Set your connection string and start
-TT_PG_CONN="postgresql://user:pass@host/dbname" docker-compose up
-```
-
----
-
-## 🎯 The Problem It Solves
-
-Most databases only tell you what data looks like *right now*. When something goes wrong — a bad migration, an accidental DELETE, a rogue script — you're left digging through backups or begging your cloud provider.
-
-TimeTravel makes your database **self-auditing from day one**:
-
-- Direct psql edits? **Captured.**
-- App-level deletes? **Captured.**
-- Need it back? **One click.**
 
 ---
 
 ## 📖 CLI Reference
 
+| Command | Description |
+|---|---|
+| `timetravel init <db>` | Initialize SQLite database for tracking |
+| `timetravel init --pg <conn>` | Initialize PostgreSQL + install triggers |
+| `timetravel query --at <time> --table <t>` | Query data at a point in time |
+| `timetravel diff --from <t> --to <t> --table <t>` | Compare between two timestamps |
+| `timetravel log --table <t> [--row <id>]` | Show change history |
+| `timetravel verify [db]` | Verify SHA-256 hash chain integrity |
+| `timetravel report --type <type>` | Generate SOC 2 evidence reports |
+| `timetravel demo` | Run interactive demo with sample data |
+
+### Options
+
 ```bash
-# PostgreSQL
-timetravel init-pg "postgresql://..."          # baseline + install triggers
-timetravel serve --pg "postgresql://..."       # launch dashboard
-timetravel serve --pg "..." --exclude session  # exclude noisy tables
+# PostgreSQL with excluded tables (e.g. session, cache)
+timetravel init --pg "postgresql://..." --exclude session,cache
 
-# SQLite
-timetravel init mydb.db                        # start tracking
-timetravel serve mydb.db                       # launch dashboard
-
-# Query & reports (works for both)
-timetravel query --at "2025-01-01" --table orders
-timetravel log --table orders --row 42
-timetravel verify mydb.db
-timetravel report --type all
+# Report types
+timetravel report --pg "postgresql://..." --type integrity --output ./reports
+timetravel report --pg "postgresql://..." --type audit
+timetravel report --pg "postgresql://..." --type retention
+timetravel report --pg "postgresql://..." --type all
 ```
 
 ---
 
-## 🔧 Dashboard Pages
+## 🔧 How It Works
 
-| Page | What it shows |
-|---|---|
-| **Overview** | Tables tracked, total changes, chain integrity, recent activity |
-| **Time Travel Query** | Your data as it was at any timestamp |
-| **Live Feed** | Real-time stream of every change |
-| **Diff** | Side-by-side comparison between two dates |
-| **Change Log** | Full INSERT/UPDATE/DELETE history with Restore button |
-| **Chain Verify** | Cryptographic verification — API entries + auto-captured |
-| **SOC 2 Reports** | Integrity, Audit Trail, and Retention reports |
+```
+Your App ──→ PostgreSQL / SQLite
+               │
+        [_tt_history table]
+               │
+    ┌──────────┴──────────┐
+    │  SHA-256 Hash Chain  │
+    │  Auto-capture Triggers│
+    │  SOC 2 Reports       │
+    └─────────────────────┘
+
+Runs on YOUR infrastructure — data never leaves your server.
+```
+
+Every change is stored as a hash chain entry:
+- Each entry contains a SHA-256 hash of itself + the previous entry's hash
+- Any modification to past records is immediately detectable
+- PostgreSQL triggers capture changes even from direct DB edits (psql, Neon console, etc.)
 
 ---
 
 ## 🛡️ Security & Privacy
 
-- Runs on **your infrastructure** — data never leaves your server
+- **Self-hosted** — your data never leaves your server
 - **Open source** — fully auditable, no black boxes
 - **No telemetry** — no phone-home, no analytics
 - **MIT license** — free to use, modify, distribute
@@ -132,12 +112,25 @@ timetravel report --type all
 
 - Python 3.10+
 - PostgreSQL **or** SQLite
-- `fastapi` + `uvicorn` (for dashboard)
-- `psycopg2-binary` (for PostgreSQL)
+- `psycopg2-binary` for PostgreSQL mode
 
 ```bash
-pip install fastapi uvicorn psycopg2-binary
+pip install psycopg2-binary  # PostgreSQL only
 ```
+
+---
+
+## 🏢 Enterprise Dashboard
+
+Need a visual interface? The **Shayntech TimeTravel Enterprise Dashboard** includes:
+
+- 🌑 Full web dashboard with dark UI
+- 🔄 One-click row restore from the UI
+- 📡 Live feed of all database changes
+- 🐳 Docker deployment
+- 📋 SOC 2 reports in the browser
+
+👉 **Contact us:** [hello@shayntech.com](mailto:hello@shayntech.com)
 
 ---
 

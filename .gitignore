@@ -5,4 +5,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
+
+# Enterprise-only (not open source)
 enterprise/
+src/shayntech_timetravel/server.py
+Dockerfile
+docker-compose.yml
+INSTALL.md
+Animation.gif
+dashboard.html
