@@ -1,101 +1,127 @@
-# 🔮 Shayntech TimeTravel
+# ⏮ Shayntech TimeTravel
 
-> **Git for your database. SOC 2 evidence built in.**
+> **Accidentally deleted production data? Get it back in seconds.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![Works with PostgreSQL](https://img.shields.io/badge/PostgreSQL-supported-blue?logo=postgresql)](https://postgresql.org)
+[![Works with NeonDB](https://img.shields.io/badge/NeonDB-supported-green)](https://neon.tech)
 
-Timetravel adds **time travel queries** and **SOC 2 technical evidence** to any SQLite database. Every change is tracked in an immutable hash chain — like GitHub, but for your data.
+<p align="center">
+  <img src="Animation.gif" alt="Shayntech TimeTravel Demo" width="100%">
+</p>
 
-```bash
-# Install from GitHub
-pip install git+https://github.com/zarrarerror/shayntech-timetravel.git
+**Shayntech TimeTravel** gives any PostgreSQL or SQLite database a complete time machine — query your data at any point in the past, restore deleted rows with one click, and generate SOC 2 audit reports automatically.
 
-# Or clone and run
-git clone https://github.com/zarrarerror/shayntech-timetravel.git
-cd shayntech-timetravel
-pip install -e .
-
-# Run a complete demo
-timetravel demo
-
-# Or use with your own database
-timetravel init mydatabase.db
-timetravel query --at "2025-01-01" --table users
-timetravel report --type all
-```
-
-**⚠️ What this is:** A tool that generates **technical evidence** for SOC 2 audits (hash chains, change logs, integrity proofs). This evidence is what SOC 2 auditors review during certification.
-
-**❌ What this is NOT:** A SOC 2 certification service. You still need a licensed third-party auditor to issue the actual SOC 2 certificate.
+No cloud dependency. No vendor lock-in. Fully open source.
 
 ---
 
-## ✨ Features
+## ✨ What It Does
 
-- 🕰️ **Time Travel Queries** — Query data as of any point in time
-- 🔗 **Immutable Hash Chain** — SHA-256 linked chain, tamper-evident
-- 📋 **SOC 2 Evidence Reports** — Integrity, Change Audit, Retention
-- 🔍 **Data Diff** — See what changed between two dates
-- 📝 **Row History** — Full change log for any row
-- ✅ **Chain Verification** — Instantly detect tampering
-- 💻 **CLI Tool** — Works with any SQLite database
+| Feature | Description |
+|---|---|
+| 🔮 **Time Travel Query** | Reconstruct your exact database state at any timestamp |
+| 🔄 **One-Click Restore** | Recover deleted rows instantly from the dashboard |
+| 📡 **Auto-Capture Triggers** | Tracks every INSERT/UPDATE/DELETE — even direct DB edits |
+| ↔️ **Data Diff** | Compare your data between any two points in time |
+| 🔗 **SHA-256 Hash Chain** | Cryptographic tamper-proof audit trail |
+| 📋 **SOC 2 Reports** | Generate compliance evidence in one click |
+| 📝 **Change Log** | Full before/after history for every row |
+| 🌑 **Dark Dashboard** | Beautiful UI — no config needed |
 
 ---
 
 ## 🚀 Quick Start
 
+### PostgreSQL (NeonDB, Supabase, Railway, self-hosted)
+
 ```bash
 # Install
-pip install shayntech-timetravel
+pip install git+https://github.com/zarrarerror/shayntech-timetravel.git
 
-# Run a complete demo
-timetravel demo
+# Initialize tracking on your database
+timetravel init-pg "postgresql://user:pass@host/dbname"
 
-# Or use with your own database
+# Launch the dashboard
+timetravel serve --pg "postgresql://user:pass@host/dbname"
+```
+
+Open **http://localhost:8765** — your time machine is ready.
+
+### SQLite
+
+```bash
+# Initialize tracking
 timetravel init mydatabase.db
-timetravel query --at "2025-01-01" --table users
+
+# Launch the dashboard
+timetravel serve mydatabase.db
+```
+
+### Docker
+
+```bash
+# Clone the repo
+git clone https://github.com/zarrarerror/shayntech-timetravel.git
+cd shayntech-timetravel
+
+# Set your connection string and start
+TT_PG_CONN="postgresql://user:pass@host/dbname" docker-compose up
+```
+
+---
+
+## 🎯 The Problem It Solves
+
+Most databases only tell you what data looks like *right now*. When something goes wrong — a bad migration, an accidental DELETE, a rogue script — you're left digging through backups or begging your cloud provider.
+
+TimeTravel makes your database **self-auditing from day one**:
+
+- Direct psql edits? **Captured.**
+- App-level deletes? **Captured.**
+- Need it back? **One click.**
+
+---
+
+## 📖 CLI Reference
+
+```bash
+# PostgreSQL
+timetravel init-pg "postgresql://..."          # baseline + install triggers
+timetravel serve --pg "postgresql://..."       # launch dashboard
+timetravel serve --pg "..." --exclude session  # exclude noisy tables
+
+# SQLite
+timetravel init mydb.db                        # start tracking
+timetravel serve mydb.db                       # launch dashboard
+
+# Query & reports (works for both)
+timetravel query --at "2025-01-01" --table orders
 timetravel log --table orders --row 42
-timetravel report --type all --output ./reports
-open ./reports/soc2-integrity-report.html
+timetravel verify mydb.db
+timetravel report --type all
 ```
 
 ---
 
-## 📖 CLI Commands
+## 🔧 Dashboard Pages
 
-| Command | Description |
-|---------|-------------|
-| `timetravel init <db>` | Start tracking an existing database |
-| `timetravel query --at <time> --table <t>` | Query data as of a point in time |
-| `timetravel diff --from <t> --to <t> --table <t>` | Show differences between two dates |
-| `timetravel log --table <t> [--row <id>]` | Show change history for a row |
-| `timetravel verify <db>` | Verify hash chain integrity |
-| `timetravel report --type <type>` | Generate SOC 2 evidence reports |
-| `timetravel demo` | Run interactive demo with sample data |
-
----
-
-## 🏗️ Architecture
-
-```
-Your App → [TimeTravel Core] ──→ Your Database
-                  │
-         ┌────────┴────────┐
-         │ Change Logger   │
-         │ Hash Chain      │
-         │ SOC 2 Reports   │
-         └─────────────────┘
-
-         Runs on YOUR infrastructure
-         Your data never leaves your server
-```
+| Page | What it shows |
+|---|---|
+| **Overview** | Tables tracked, total changes, chain integrity, recent activity |
+| **Time Travel Query** | Your data as it was at any timestamp |
+| **Live Feed** | Real-time stream of every change |
+| **Diff** | Side-by-side comparison between two dates |
+| **Change Log** | Full INSERT/UPDATE/DELETE history with Restore button |
+| **Chain Verify** | Cryptographic verification — API entries + auto-captured |
+| **SOC 2 Reports** | Integrity, Audit Trail, and Retention reports |
 
 ---
 
 ## 🛡️ Security & Privacy
 
-- **Runs on YOUR infrastructure** — your data never leaves your server
+- Runs on **your infrastructure** — data never leaves your server
 - **Open source** — fully auditable, no black boxes
 - **No telemetry** — no phone-home, no analytics
 - **MIT license** — free to use, modify, distribute
@@ -105,7 +131,13 @@ Your App → [TimeTravel Core] ──→ Your Database
 ## 🔧 Requirements
 
 - Python 3.10+
-- SQLite
+- PostgreSQL **or** SQLite
+- `fastapi` + `uvicorn` (for dashboard)
+- `psycopg2-binary` (for PostgreSQL)
+
+```bash
+pip install fastapi uvicorn psycopg2-binary
+```
 
 ---
 
@@ -116,6 +148,6 @@ MIT License — free to use, modify, and distribute.
 ---
 
 <p align="center">
-  Built by <a href="https://shayntech.com">Shayntech</a> — AI consulting and software.<br>
-  Also check out our <a href="https://shayntech.com/products/excel-ai">free Excel AI Agent</a>
+  Built by <a href="https://shayntech.com">Shayntech</a><br>
+  <a href="https://github.com/zarrarerror/shayntech-timetravel">⭐ Star on GitHub</a> if this saved your data
 </p>
