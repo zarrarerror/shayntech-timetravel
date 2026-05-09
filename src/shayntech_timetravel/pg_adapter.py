@@ -34,6 +34,147 @@ def _dict_row(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
+def install_triggers(conn_str: str, tables: list = None, exclude: list = None) -> dict:
+    """Install PostgreSQL triggers so every INSERT/UPDATE/DELETE is auto-captured.
+
+    Creates a single shared trigger function _tt_trigger_capture() plus one
+    AFTER trigger per table.  Safe to call repeatedly — skips tables that
+    already have the trigger installed.
+    """
+    conn = _connect(conn_str)
+    cur = conn.cursor()
+
+    # Try to enable pgcrypto for SHA-256; fall back to MD5 if unavailable
+    has_pgcrypto = False
+    try:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        conn.commit()
+        cur.execute("SELECT encode(digest('x','sha256'),'hex')")
+        cur.fetchone()
+        has_pgcrypto = True
+    except Exception:
+        conn.rollback()
+
+    hash_expr = (
+        "encode(digest(data_str,'sha256'),'hex')"
+        if has_pgcrypto else
+        "md5(data_str)"
+    )
+
+    # Single shared trigger function — PK column is passed as trigger argument
+    cur.execute(f"""
+        CREATE OR REPLACE FUNCTION _tt_trigger_capture()
+        RETURNS TRIGGER LANGUAGE plpgsql AS $$
+        DECLARE
+          pk_col     TEXT := TG_ARGV[0];
+          row_id_val TEXT;
+          old_json   TEXT;
+          new_json   TEXT;
+          ts         TEXT;
+          prev_hash  TEXT;
+          data_str   TEXT;
+          csum       TEXT;
+        BEGIN
+          ts := to_char(NOW() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS+00:00');
+          IF TG_OP = 'DELETE' THEN
+            row_id_val := (row_to_json(OLD)->>pk_col);
+            old_json   := row_to_json(OLD)::TEXT;
+            new_json   := NULL;
+          ELSIF TG_OP = 'INSERT' THEN
+            row_id_val := (row_to_json(NEW)->>pk_col);
+            old_json   := NULL;
+            new_json   := row_to_json(NEW)::TEXT;
+          ELSE
+            row_id_val := (row_to_json(NEW)->>pk_col);
+            old_json   := row_to_json(OLD)::TEXT;
+            new_json   := row_to_json(NEW)::TEXT;
+          END IF;
+
+          SELECT checksum INTO prev_hash FROM _tt_history ORDER BY id DESC LIMIT 1;
+
+          data_str := TG_TABLE_NAME || '|' ||
+                      COALESCE(row_id_val,'') || '|' ||
+                      TG_OP || '|' ||
+                      COALESCE(old_json,'') || '|' ||
+                      COALESCE(new_json,'') || '|' || ts;
+          csum := {hash_expr};
+
+          INSERT INTO _tt_history
+            (table_name, row_id, operation, old_data, new_data, checksum, prev_checksum, created_at)
+          VALUES
+            (TG_TABLE_NAME, row_id_val, TG_OP,
+             old_json, new_json, csum,
+             'TRIGGER:' || COALESCE(prev_hash,''), ts);
+
+          IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+          RETURN NEW;
+        END;
+        $$
+    """)
+    conn.commit()
+
+    # Discover tables if not specified
+    if tables is None:
+        dict_cur = _dict_row(conn)
+        dict_cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_type='BASE TABLE' "
+            "AND table_name NOT LIKE '\\_tt\\_%' ORDER BY table_name"
+        )
+        tables = [r["table_name"] for r in dict_cur.fetchall()]
+
+    # Remove excluded tables
+    if exclude:
+        tables = [t for t in tables if t not in exclude]
+
+    # Find which tables already have the trigger
+    cur.execute("SELECT tgname FROM pg_trigger WHERE tgname LIKE '_tt_auto_%'")
+    existing = {r[0] for r in cur.fetchall()}
+
+    installed, skipped, errors = [], [], []
+
+    for table in tables:
+        trigger_name = f"_tt_auto_{table}"
+        if trigger_name in existing:
+            skipped.append(table)
+            continue
+        try:
+            # Resolve PK column
+            dict_cur = _dict_row(conn)
+            dict_cur.execute("""
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                  AND tc.table_schema   = kcu.table_schema
+                WHERE tc.constraint_type = 'PRIMARY KEY'
+                  AND tc.table_name      = %s
+                  AND tc.table_schema    = 'public'
+                ORDER BY kcu.ordinal_position LIMIT 1
+            """, (table,))
+            pk_row = dict_cur.fetchone()
+            pk_col = pk_row["column_name"] if pk_row else "id"
+
+            cur.execute(f"""
+                CREATE TRIGGER {trigger_name}
+                AFTER INSERT OR UPDATE OR DELETE ON "{table}"
+                FOR EACH ROW EXECUTE FUNCTION _tt_trigger_capture('{pk_col}')
+            """)
+            conn.commit()
+            installed.append(table)
+        except Exception as exc:
+            conn.rollback()
+            errors.append(f"{table}: {exc}")
+
+    conn.close()
+    return {
+        "installed": installed,
+        "skipped_already_existed": skipped,
+        "errors": errors,
+        "hash_algorithm": "sha256" if has_pgcrypto else "md5",
+    }
+
+
 def _ensure_history_table(conn):
     """Create the _tt_history table in PostgreSQL."""
     cur = conn.cursor()
@@ -100,12 +241,12 @@ class PgHashChain:
 
         conn, cur = self._get_cursor()
         cur.execute(
-            """INSERT INTO _tt_history 
+            """INSERT INTO _tt_history
                (table_name, row_id, operation, old_data, new_data, checksum, prev_checksum, created_at)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (table, row_id, operation,
-             json.dumps(old_data) if old_data else None,
-             json.dumps(new_data) if new_data else None,
+             json.dumps(old_data, default=str) if old_data else None,
+             json.dumps(new_data, default=str) if new_data else None,
              checksum, prev, entry["timestamp"])
         )
         conn.commit()
@@ -122,46 +263,79 @@ class PgHashChain:
         conn.close()
 
         if not rows:
-            return {"status": "PASS", "message": "No history to verify", "total": 0}
+            return {"status": "PASS", "message": "No history to verify", "total": 0, "failures": 0}
 
         failures = []
         prev_checksum = None
+        trigger_count = 0
+        api_count = 0
+
         for row in rows:
-            entry = {
-                "table": row["table_name"],
-                "row_id": row["row_id"],
-                "operation": row["operation"],
-                "old_data": json.loads(row["old_data"]) if row["old_data"] else {},
-                "new_data": json.loads(row["new_data"]) if row["new_data"] else {},
-                "prev_checksum": row["prev_checksum"] or "",
-                "timestamp": row["created_at"] or "",
-            }
-            expected_hash = hashlib.sha256(
-                json.dumps(entry, sort_keys=True).encode()
-            ).hexdigest()
+            pc = row["prev_checksum"] or ""
+            is_trigger = pc.startswith("TRIGGER:")
 
-            if expected_hash != row["checksum"]:
-                failures.append({
-                    "id": row["id"],
-                    "expected": expected_hash,
-                    "actual": row["checksum"],
-                    "issue": "checksum_mismatch"
-                })
-
-            if prev_checksum and row["prev_checksum"] != prev_checksum:
-                failures.append({
-                    "id": row["id"],
-                    "expected_prev": prev_checksum,
-                    "actual_prev": row["prev_checksum"],
-                    "issue": "chain_break"
-                })
-            prev_checksum = row["checksum"]
+            if is_trigger:
+                trigger_count += 1
+                # Verify the trigger entry's own row hash
+                data_str = "|".join([
+                    str(row["table_name"]),
+                    str(row["row_id"] or ""),
+                    str(row["operation"]),
+                    str(row["old_data"] or ""),
+                    str(row["new_data"] or ""),
+                    str(row["created_at"] or ""),
+                ])
+                stored = str(row["checksum"])
+                if len(stored) == 64:
+                    expected = hashlib.sha256(data_str.encode()).hexdigest()
+                else:
+                    import hashlib as _hl2
+                    expected = _hl2.md5(data_str.encode()).hexdigest()
+                if expected != stored:
+                    failures.append({
+                        "id": row["id"],
+                        "expected": expected,
+                        "actual": stored,
+                        "issue": "trigger_row_tampered"
+                    })
+                prev_checksum = stored
+            else:
+                api_count += 1
+                entry = {
+                    "table": row["table_name"],
+                    "row_id": row["row_id"],
+                    "operation": row["operation"],
+                    "old_data": json.loads(row["old_data"]) if row["old_data"] else {},
+                    "new_data": json.loads(row["new_data"]) if row["new_data"] else {},
+                    "prev_checksum": pc,
+                    "timestamp": row["created_at"] or "",
+                }
+                expected_hash = hashlib.sha256(
+                    json.dumps(entry, sort_keys=True).encode()
+                ).hexdigest()
+                if expected_hash != row["checksum"]:
+                    failures.append({
+                        "id": row["id"],
+                        "expected": expected_hash,
+                        "actual": row["checksum"],
+                        "issue": "checksum_mismatch"
+                    })
+                if prev_checksum and pc != prev_checksum:
+                    failures.append({
+                        "id": row["id"],
+                        "expected_prev": prev_checksum,
+                        "actual_prev": pc,
+                        "issue": "chain_break"
+                    })
+                prev_checksum = row["checksum"]
 
         return {
             "status": "FAIL" if failures else "PASS",
             "total": len(rows),
             "failures": len(failures),
-            "details": failures
+            "api_entries": api_count,
+            "trigger_entries": trigger_count,
+            "details": failures,
         }
 
 
@@ -284,7 +458,7 @@ class PgTimeTravelDB:
             cur2.execute(f'SELECT * FROM "{table}"')
             current = {}
             for r in cur2.fetchall():
-                d = dict(r)
+                d = json.loads(json.dumps(dict(r), default=str))
                 rid = str(d.get(pk_col, ""))
                 if rid:
                     current[rid] = d

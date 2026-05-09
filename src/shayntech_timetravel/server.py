@@ -21,6 +21,7 @@ from .reports import SOC2Report
 # ─── Global config (set once at startup) ────────────────────────────────────
 _DB_PATH: Optional[str] = None
 _PG_CONN_STR: Optional[str] = None
+_EXCLUDE_TABLES: list = []   # tables skipped from tracking & sidebar
 
 
 def _get_chain():
@@ -37,6 +38,19 @@ def _get_db():
     return TimeTravelDB(_DB_PATH)
 
 
+def _safe(obj):
+    """Recursively convert any non-JSON-serializable values (datetime, Decimal, etc.) to str."""
+    if isinstance(obj, list):
+        return [_safe(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _safe(v) for k, v in obj.items()}
+    try:
+        json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
+
+
 def _sqlite(sql: str, params: tuple = ()) -> list[dict]:
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -51,10 +65,11 @@ def _get_tables() -> list[str]:
         db = PgTimeTravelDB(_PG_CONN_STR)
         t = db.get_tables()
         db.close()
-        return t
-    return [r["name"] for r in _sqlite(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_tt_%' ORDER BY name"
-    )]
+    else:
+        t = [r["name"] for r in _sqlite(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_tt_%' ORDER BY name"
+        )]
+    return [x for x in t if x not in _EXCLUDE_TABLES]
 
 
 # ─── Dashboard HTML ──────────────────────────────────────────────────────────
@@ -87,11 +102,13 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 .shell{display:flex;min-height:100vh}
 /* Sidebar */
 .sb{width:var(--sw);background:var(--bg1);border-right:1px solid var(--bdr);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;transition:transform .3s cubic-bezier(.4,0,.2,1)}
-.sb-logo{display:flex;align-items:center;gap:10px;padding:18px 16px 14px;border-bottom:1px solid var(--bdr)}
+.sb-logo{display:flex;align-items:center;gap:10px;padding:18px 16px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 .sb-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .sb-name{font-weight:800;font-size:15px;letter-spacing:-.3px}
 .sb-name span{color:var(--brand-l)}
-.sb-nav{flex:1;padding:8px;overflow-y:auto}
+/* Single scrollable area for nav + tables */
+.sb-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.sb-nav{padding:8px}
 .sb-sec{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--t4);padding:14px 8px 5px}
 .nb{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:var(--rs);font-size:13.5px;font-weight:500;color:var(--t2);background:none;border:none;cursor:pointer;text-align:left;transition:all .15s}
 .nb:hover{background:var(--bg2);color:var(--t1)}
@@ -101,7 +118,8 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 .sb-ti{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:var(--rs);font-size:12.5px;color:var(--t3);cursor:pointer;transition:all .15s}
 .sb-ti:hover{background:var(--bg2);color:var(--t2)}
 .sb-dot{width:5px;height:5px;border-radius:50%;background:var(--brand);opacity:.7;flex-shrink:0}
-.sb-chain{margin:8px;padding:10px 12px;border-radius:var(--rs);background:var(--green-d);border:1px solid rgba(16,185,129,.2)}
+/* Chain status always pinned to bottom */
+.sb-chain{flex-shrink:0;margin:8px;padding:10px 12px;border-radius:var(--rs);background:var(--green-d);border:1px solid rgba(16,185,129,.2)}
 .sb-chain .cl{font-size:11px;color:var(--green);font-weight:700}
 .sb-chain .cc{font-size:11.5px;color:var(--t3);margin-top:2px}
 /* Main */
@@ -226,7 +244,7 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 .vbanner{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:var(--r);margin-bottom:14px}
 .vpass{background:var(--green-d);border:1px solid rgba(16,185,129,.25)}
 .vfail{background:var(--red-d);border:1px solid rgba(239,68,68,.25)}
-.vstats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.vstats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}
 .vs{background:var(--bg3);border:1px solid var(--bdr);border-radius:var(--rs);padding:13px;text-align:center}
 .vsn{font-size:24px;font-weight:700}
 .vsl{font-size:11.5px;color:var(--t3);margin-top:2px}
@@ -265,7 +283,7 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:10px}
 ::-webkit-scrollbar-thumb:hover{background:var(--t4)}
 /* Responsive */
-@media(max-width:960px){.stats{grid-template-columns:repeat(2,1fr)}.rgrid{grid-template-columns:repeat(2,1fr)}.qform{grid-template-columns:1fr 1fr}.dform{grid-template-columns:1fr 1fr}.dres{grid-template-columns:1fr}.vstats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:960px){.stats{grid-template-columns:repeat(2,1fr)}.rgrid{grid-template-columns:repeat(2,1fr)}.qform{grid-template-columns:1fr 1fr}.dform{grid-template-columns:1fr 1fr}.dres{grid-template-columns:1fr}.vstats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:680px){:root{--sw:0px}.sb{transform:translateX(-252px)}.sb.open{transform:translateX(0)}.main{margin-left:0!important}.content{padding:14px}.topbar{padding:0 14px}.rgrid,.stats{grid-template-columns:1fr}}
 </style>
 </head>
@@ -278,20 +296,22 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
     <div class="sb-mark">⏮</div>
     <div class="sb-name">Time<span>Travel</span></div>
   </div>
-  <nav class="sb-nav">
-    <div class="sb-sec">Navigate</div>
-    <button class="nb active" data-tab="overview"><span class="ni">📊</span> Overview</button>
-    <button class="nb" data-tab="query"><span class="ni">🔮</span> Time Travel Query</button>
-    <button class="nb" data-tab="feed"><span class="ni">📡</span> Live Feed</button>
-    <button class="nb" data-tab="diff"><span class="ni">↔️</span> Diff</button>
-    <button class="nb" data-tab="log"><span class="ni">📝</span> Change Log</button>
-    <div class="sb-sec">Compliance</div>
-    <button class="nb" data-tab="verify"><span class="ni">🔗</span> Chain Verify</button>
-    <button class="nb" data-tab="reports"><span class="ni">📋</span> SOC 2 Reports</button>
-  </nav>
-  <div class="sb-tables">
-    <div class="sb-sec" style="padding-top:6px">Tables</div>
-    <div id="sb-tl"><div style="font-size:12px;color:var(--t4);padding:5px 8px">Loading...</div></div>
+  <div class="sb-scroll">
+    <nav class="sb-nav">
+      <div class="sb-sec">Navigate</div>
+      <button class="nb active" data-tab="overview"><span class="ni">📊</span> Overview</button>
+      <button class="nb" data-tab="query"><span class="ni">🔮</span> Time Travel Query</button>
+      <button class="nb" data-tab="feed"><span class="ni">📡</span> Live Feed</button>
+      <button class="nb" data-tab="diff"><span class="ni">↔️</span> Diff</button>
+      <button class="nb" data-tab="log"><span class="ni">📝</span> Change Log</button>
+      <div class="sb-sec">Compliance</div>
+      <button class="nb" data-tab="verify"><span class="ni">🔗</span> Chain Verify</button>
+      <button class="nb" data-tab="reports"><span class="ni">📋</span> SOC 2 Reports</button>
+    </nav>
+    <div class="sb-tables">
+      <div class="sb-sec" style="padding-top:6px">Tables</div>
+      <div id="sb-tl"><div style="font-size:12px;color:var(--t4);padding:5px 8px">Loading...</div></div>
+    </div>
   </div>
   <div class="sb-chain" id="sb-chain">
     <div class="cl">⬤ Chain Status</div>
@@ -730,22 +750,36 @@ async function runLog() {
     }
     const items=d.entries.map((e,i)=>{
       const opBadge=`<span class="badge ${opCls(e.operation)}">${e.operation}</span>`;
+      const pc=String(e.prev_checksum||'');
+      const src=pc.startsWith('TRIGGER:')?
+        `<span style="font-size:10px;background:var(--blue-d);color:var(--blue);padding:2px 7px;border-radius:100px;font-weight:600">AUTO</span>`:
+        `<span style="font-size:10px;background:var(--brand-d);color:var(--brand-l);padding:2px 7px;border-radius:100px;font-weight:600">API</span>`;
       let old={},nw={};
       try{ if(e.old_data) old=JSON.parse(e.old_data); }catch(_){}
       try{ if(e.new_data) nw=JSON.parse(e.new_data); }catch(_){}
       const hasData=Object.keys(old).length||Object.keys(nw).length;
+      // For DELETE: show a highlighted before-only panel so the lost data is obvious
+      const isDelete=e.operation==='DELETE';
       const diffHtml=hasData?`<div class="dpair">
-        ${Object.keys(old).length?`<div class="db2"><div class="dlbl">BEFORE</div><pre style="font-size:10.5px;white-space:pre-wrap;color:var(--t2)">${JSON.stringify(old,null,2)}</pre></div>`:'<div></div>'}
-        ${Object.keys(nw).length?`<div class="da"><div class="dlbl">AFTER</div><pre style="font-size:10.5px;white-space:pre-wrap;color:var(--t2)">${JSON.stringify(nw,null,2)}</pre></div>`:'<div></div>'}
-      </div>`:'' ;
+        ${Object.keys(old).length?`<div class="db2"><div class="dlbl">${isDelete?'🗑 DELETED DATA':'BEFORE'}</div><pre style="font-size:10.5px;white-space:pre-wrap;color:var(--t2)">${JSON.stringify(old,null,2)}</pre></div>`:'<div></div>'}
+        ${Object.keys(nw).length?`<div class="da"><div class="dlbl">AFTER</div><pre style="font-size:10.5px;white-space:pre-wrap;color:var(--t2)">${JSON.stringify(nw,null,2)}</pre></div>`:'<div style="display:flex;align-items:center;justify-content:center;color:var(--t4);font-size:12px">Row no longer exists</div>'}
+      </div>`:'';
+      const ts=String(e.created_at||'');
+      // "See what changed" shortcut — populates Diff with ±2 min around this event
+      const tBefore=ts.slice(0,16).replace('T',' ');
+      const tAfter=new Date(new Date(ts).getTime()+120000).toISOString().slice(0,16).replace('T',' ');
+      const diffBtn=`<button class="tlex" style="color:var(--blue)" onclick="jumpDiff('${table}','${tBefore}','${tAfter}')">↔ See diff</button>`;
+      const restoreBtn=isDelete&&Object.keys(old).length?
+        `<button class="tlex" style="color:var(--green)" onclick="restoreRow(${e.id},'${table}',${e.row_id})">🔄 Restore</button>`:'';
       return `<div class="tle" id="tl${i}">
         <div class="tll2"><div class="tln">#${e.id}</div><div class="tlline"></div></div>
         <div class="tlr">
           <div class="tlh">
-            ${opBadge}
-            <span class="tlw">${e.created_at||''}</span>
+            ${opBadge}${src}
+            <span class="tlw">${ts.slice(0,19).replace('T',' ')}</span>
             <span style="font-size:12px;color:var(--t3)">row ${e.row_id}</span>
             ${hasData?`<button class="tlex" onclick="tlToggle(${i})">▼ details</button>`:''}
+            ${diffBtn}${restoreBtn}
           </div>
           <div class="tlhash mono">${(e.checksum||'').slice(0,32)}…</div>
           ${hasData?`<div class="tld" id="tld${i}">${diffHtml}</div>`:''}
@@ -757,13 +791,30 @@ async function runLog() {
 }
 
 function tlToggle(i){
-  const e=document.getElementById('tl'+i);
-  const b=e.querySelector('.tlex');
-  e.classList.toggle('exp');
-  if(b) b.textContent=e.classList.contains('exp')?'▲ hide':'▼ details';
+  const el=document.getElementById('tl'+i);
+  const b=el.querySelector('.tlex');
+  el.classList.toggle('exp');
+  if(b) b.textContent=el.classList.contains('exp')?'▲ hide':'▼ details';
 }
 
 function opCls(op){return{INSERT:'bgrn',UPDATE:'byel',DELETE:'bred',BASELINE:'bblu'}[op]||'bpur';}
+
+function jumpDiff(table,from,to){
+  showTab('diff');
+  document.getElementById('d-tbl').value=table;
+  document.getElementById('d-from').value=from.replace(' ','T');
+  document.getElementById('d-to').value=to.replace(' ','T');
+  runDiff();
+}
+
+async function restoreRow(historyId,table,rowId){
+  if(!confirm('Restore this deleted row back into "'+table+'"?')) return;
+  try {
+    const d=await api('/api/restore',{method:'POST',body:{history_id:historyId}});
+    toast('✅ Row '+rowId+' restored to '+table,'ok');
+    runLog();
+  } catch(e){ toast('Restore failed: '+e.message,'err'); }
+}
 
 // ─── Verify ───────────────────────────────────────────────────────────────────
 async function runVerify() {
@@ -794,6 +845,8 @@ async function runVerify() {
       </div>
       <div class="vstats">
         <div class="vs"><div class="vsn">${d.total}</div><div class="vsl">Total Entries</div></div>
+        <div class="vs"><div class="vsn" style="color:var(--brand-l)">${d.api_entries??'—'}</div><div class="vsl">API / Baseline</div></div>
+        <div class="vs"><div class="vsn" style="color:var(--blue)">${d.trigger_entries??'—'}</div><div class="vsl">Auto-captured</div></div>
         <div class="vs"><div class="vsn" style="color:var(--green)">${d.total-d.failures}</div><div class="vsl">Verified</div></div>
         <div class="vs"><div class="vsn" style="color:${d.failures>0?'var(--red)':'var(--green)'}">${d.failures}</div><div class="vsl">Failures</div></div>
       </div>
@@ -870,17 +923,184 @@ function toast(msg,type='inf') {
 </html>"""
 
 
+# ─── PostgreSQL report generator ─────────────────────────────────────────────
+def _pg_report(report_type: str) -> str:
+    """Generate SOC 2 HTML reports from PostgreSQL _tt_history table."""
+    from .pg_adapter import _connect, _dict_row
+    from .reports import _CSS
+    import hashlib as _hashlib
+
+    conn = _connect(_PG_CONN_STR)
+    cur = _dict_row(conn)
+
+    cur.execute("SELECT COUNT(*) AS c FROM _tt_history")
+    total = cur.fetchone()["c"]
+    cur.execute("SELECT MIN(created_at) AS t FROM _tt_history")
+    first = (cur.fetchone() or {}).get("t") or "N/A"
+    cur.execute("SELECT MAX(created_at) AS t FROM _tt_history")
+    last = (cur.fetchone() or {}).get("t") or "N/A"
+    cur.execute("SELECT DISTINCT table_name FROM _tt_history ORDER BY table_name")
+    tables = [r["table_name"] for r in cur.fetchall()]
+
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    if report_type == "integrity":
+        chain = _get_chain()
+        v = chain.verify_chain()
+        is_pass = v["status"] == "PASS"
+        report_id = _hashlib.sha256(f"{now}{_PG_CONN_STR}".encode()).hexdigest()[:16]
+
+        cur.execute(
+            "SELECT id, table_name, operation, checksum FROM _tt_history ORDER BY id DESC LIMIT 10"
+        )
+        samples = list(reversed(cur.fetchall()))
+        conn.close()
+
+        tbl_rows = "".join(f"  <tr><td>{t}</td></tr>\n" for t in tables)
+        sample_rows = "".join(
+            f"  <tr><td>{s['id']}</td><td>{s['table_name']}</td><td>{s['operation']}</td>"
+            f"<td>{str(s['checksum'])[:16]}...</td></tr>\n"
+            for s in samples
+        )
+        status_cls = "pass" if is_pass else "fail"
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>SOC 2 Data Integrity Report — Shayntech TimeTravel</title>
+<style>{_CSS}</style></head><body>
+<div class="stamp">{"✅" if is_pass else "❌"}</div>
+<h1>SOC 2 — Data Integrity Report</h1>
+<p><span class="label">Generated:</span> {now}</p>
+<p><span class="label">Database:</span> PostgreSQL</p>
+<p><span class="label">Chain Status:</span> <span class="{status_cls}">{v["status"]}</span></p>
+<div class="card">
+  <p><span class="label">Total Changes Tracked:</span> {total}</p>
+  <p><span class="label">Time Range:</span> {first} — {last}</p>
+  <p><span class="label">Tables Tracked:</span> {len(tables)}</p>
+  <p><span class="label">Chain Verification:</span> {total - v["failures"]}/{total} entries verified</p>
+</div>
+<h2>Tables Monitored</h2>
+<table><tr><th>Table Name</th></tr>{tbl_rows}</table>
+<h2>Chain Verification Details</h2>
+<div class="card">
+  <p><span class="label">Hash Algorithm:</span> SHA-256</p>
+  <p><span class="label">Chain Structure:</span> Each entry contains a hash of itself + the previous entry's hash</p>
+  <p><span class="label">Tamper Evidence:</span> Any modification to past records breaks the chain</p>
+  <p><span class="label">Verification Result:</span> {"All entries valid" if is_pass else f'{v["failures"]} entries failed'}</p>
+</div>
+<h2>Sample Chain Entries</h2>
+<table>
+  <tr><th>ID</th><th>Table</th><th>Operation</th><th>Checksum (first 16)</th></tr>
+  {sample_rows}
+</table>
+<h2>Auditor Statement</h2>
+<div class="card">
+  <p>This report certifies that the data in the tracked tables has maintained cryptographic integrity since tracking began.</p>
+  <p>The hash chain provides non-repudiation — any unauthorized modification to historical data is detectable.</p>
+  <p>Satisfies SOC 2 CC6.1, CC6.6, CC7.2.</p>
+</div>
+<div class="footer">Generated by Shayntech TimeTravel — Open Source<br>Report ID: {report_id}</div>
+</body></html>"""
+
+    elif report_type == "audit":
+        cur.execute("SELECT * FROM _tt_history ORDER BY created_at DESC")
+        changes = cur.fetchall()
+        conn.close()
+
+        n_ins = sum(1 for c in changes if c["operation"] == "INSERT")
+        n_upd = sum(1 for c in changes if c["operation"] == "UPDATE")
+        n_del = sum(1 for c in changes if c["operation"] == "DELETE")
+        n_tbls = len(set(c["table_name"] for c in changes))
+
+        rows_html = "".join(
+            f"  <tr><td>{c['id']}</td><td>{c['table_name']}</td><td>{c['row_id']}</td>"
+            f"<td class='{c['operation'].lower()}'>{c['operation']}</td>"
+            f"<td>{str(c['created_at'])[:19]}</td>"
+            f"<td style='font-family:monospace;font-size:9px'>{str(c['checksum'])[:12]}...</td></tr>\n"
+            for c in changes
+        )
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>SOC 2 Change Audit Report — Shayntech TimeTravel</title>
+<style>{_CSS}
+.summary{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}}
+.stat{{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;text-align:center}}
+.stat-num{{font-size:28px;font-weight:bold;color:#a78bfa}}
+.stat-label{{font-size:11px;color:#64748b}}
+</style></head><body>
+<h1>📋 SOC 2 — Change Audit Report</h1>
+<p><span class="label">Generated:</span> {now}</p>
+<div class="summary">
+  <div class="stat"><div class="stat-num">{len(changes)}</div><div class="stat-label">Total Changes</div></div>
+  <div class="stat"><div class="stat-num">{n_ins}</div><div class="stat-label">Inserts</div></div>
+  <div class="stat"><div class="stat-num">{n_upd}</div><div class="stat-label">Updates</div></div>
+  <div class="stat"><div class="stat-num">{n_del}</div><div class="stat-label">Deletes</div></div>
+  <div class="stat"><div class="stat-num">{n_tbls}</div><div class="stat-label">Tables Affected</div></div>
+  <div class="stat"><div class="stat-num">{total}</div><div class="stat-label">All-Time Total</div></div>
+</div>
+<h2>Change Details</h2>
+<table>
+  <tr><th>ID</th><th>Table</th><th>Row</th><th>Operation</th><th>Timestamp</th><th>Checksum</th></tr>
+  {rows_html}
+</table>
+<div class="footer">Generated by Shayntech TimeTravel — Open Source<br>Satisfies SOC 2 CC6.1 and CC7.2</div>
+</body></html>"""
+
+    else:  # retention
+        point = datetime.utcnow().strftime("%Y-%m-%d")
+        summary_rows = ""
+        for t in tables:
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM _tt_history WHERE table_name=%s AND created_at<=%s",
+                (t, point)
+            )
+            before = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) AS c FROM _tt_history WHERE table_name=%s", (t,))
+            ttl = cur.fetchone()["c"]
+            ok = "✅" if before > 0 else "⚠️"
+            summary_rows += f"  <tr><td>{t}</td><td>{before}</td><td>{ttl}</td><td>{ok}</td></tr>\n"
+        conn.close()
+        return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>SOC 2 Data Retention Report — Shayntech TimeTravel</title>
+<style>{_CSS} h1{{border-bottom-color:#fbbf24}} h2{{color:#fbbf24}} .card{{border-color:#fbbf24}}</style>
+</head><body>
+<h1>📜 SOC 2 — Data Retention Report</h1>
+<p><span class="label">Generated:</span> {now}</p>
+<p><span class="label">Point-in-Time Verified:</span> {point}</p>
+<div class="card">
+  <p>This report certifies that data existed and was tracked as of <strong>{point}</strong>.</p>
+  <p>All changes recorded up to this date are cryptographically verifiable via the hash chain.</p>
+</div>
+<table>
+  <tr><th>Table</th><th>Changes Before Date</th><th>Total Changes</th><th>Retention Verified</th></tr>
+  {summary_rows}
+</table>
+<div class="footer">Generated by Shayntech TimeTravel — Open Source<br>Satisfies SOC 2 P4.1 (Retention) and CC6.1</div>
+</body></html>"""
+
+
 # ─── FastAPI app factory ─────────────────────────────────────────────────────
-def create_app(db_path: str = None, pg_conn_str: str = None):
-    global _DB_PATH, _PG_CONN_STR
+def create_app(db_path: str = None, pg_conn_str: str = None, exclude_tables: list = None):
+    global _DB_PATH, _PG_CONN_STR, _EXCLUDE_TABLES
     _DB_PATH = db_path
     _PG_CONN_STR = pg_conn_str
+    # Merge caller-supplied list with TT_EXCLUDE_TABLES env var
+    env_exclude = [t.strip() for t in os.environ.get("TT_EXCLUDE_TABLES", "").split(",") if t.strip()]
+    _EXCLUDE_TABLES = list(set((exclude_tables or []) + env_exclude))
 
     if not HAS_FASTAPI:
         raise ImportError(
             "FastAPI and uvicorn are required.\n"
             "Install: pip install fastapi uvicorn"
         )
+
+    # Auto-install triggers for PG mode so every direct DB change is captured
+    if pg_conn_str:
+        try:
+            from .pg_adapter import install_triggers
+            install_triggers(pg_conn_str, exclude=_EXCLUDE_TABLES)
+        except Exception:
+            pass  # never block dashboard startup
 
     from fastapi import FastAPI, Request
     from fastapi.responses import HTMLResponse, JSONResponse
@@ -897,14 +1117,32 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
             tables = _get_tables()
             chain = _get_chain()
             verify = chain.verify_chain()
-            db_name = (
-                os.path.basename(_DB_PATH) if _DB_PATH
-                else (_PG_CONN_STR.split("/")[-1] if _PG_CONN_STR else "Unknown")
-            )
+            if _DB_PATH:
+                db_name = os.path.basename(_DB_PATH)
+            elif _PG_CONN_STR:
+                # Extract just the database name from the connection string
+                import re as _re
+                m = _re.search(r'/([^/?]+)(\?|$)', _PG_CONN_STR)
+                db_name = m.group(1) if m else "PostgreSQL"
+            else:
+                db_name = "Unknown"
             latest = None
             if _DB_PATH:
                 rows = _sqlite("SELECT * FROM _tt_history ORDER BY id DESC LIMIT 1")
                 latest = rows[0] if rows else None
+            elif _PG_CONN_STR:
+                try:
+                    from .pg_adapter import _connect, _dict_row
+                    _c = _connect(_PG_CONN_STR)
+                    _cur = _dict_row(_c)
+                    _cur.execute("SELECT * FROM _tt_history ORDER BY id DESC LIMIT 1")
+                    _row = _cur.fetchone()
+                    if _row:
+                        latest = {k: str(v) if not isinstance(v, (int, float, bool, type(None))) else v
+                                  for k, v in _row.items()}
+                    _c.close()
+                except Exception:
+                    pass
             return JSONResponse({
                 "db_name": db_name,
                 "tables": tables,
@@ -922,7 +1160,7 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
             db = _get_db()
             rows = db.query_at(body["at"], body["table"], body.get("row_id"))
             db.close()
-            return JSONResponse({"rows": rows})
+            return JSONResponse({"rows": _safe(rows)})
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -931,7 +1169,18 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
         try:
             if _DB_PATH:
                 if table == "_all":
-                    entries = _sqlite("SELECT * FROM _tt_history ORDER BY id DESC LIMIT ?", (limit,))
+                    if _EXCLUDE_TABLES:
+                        placeholders = ",".join("?" * len(_EXCLUDE_TABLES))
+                        entries = _sqlite(
+                            f"SELECT * FROM _tt_history WHERE table_name NOT IN ({placeholders}) "
+                            f"AND operation != 'BASELINE' ORDER BY id DESC LIMIT ?",
+                            (*_EXCLUDE_TABLES, limit)
+                        )
+                    else:
+                        entries = _sqlite(
+                            "SELECT * FROM _tt_history WHERE operation != 'BASELINE' ORDER BY id DESC LIMIT ?",
+                            (limit,)
+                        )
                 elif row_id:
                     entries = _sqlite(
                         "SELECT * FROM _tt_history WHERE table_name=? AND row_id=? ORDER BY id DESC LIMIT ?",
@@ -946,13 +1195,26 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
                 from .pg_adapter import _connect, _dict_row
                 conn = _connect(_PG_CONN_STR)
                 cur = _dict_row(conn)
-                if row_id:
+                if table == "_all":
+                    if _EXCLUDE_TABLES:
+                        placeholders = ",".join("%s" * len(_EXCLUDE_TABLES))
+                        cur.execute(
+                            f"SELECT * FROM _tt_history WHERE table_name NOT IN ({placeholders}) "
+                            f"AND operation != 'BASELINE' ORDER BY id DESC LIMIT %s",
+                            (*_EXCLUDE_TABLES, limit)
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT * FROM _tt_history WHERE operation != 'BASELINE' ORDER BY id DESC LIMIT %s",
+                            (limit,)
+                        )
+                elif row_id:
                     cur.execute("SELECT * FROM _tt_history WHERE table_name=%s AND row_id=%s ORDER BY id DESC LIMIT %s",
                                 (table, row_id, limit))
                 else:
                     cur.execute("SELECT * FROM _tt_history WHERE table_name=%s ORDER BY id DESC LIMIT %s",
                                 (table, limit))
-                entries = [dict(r) for r in cur.fetchall()]
+                entries = _safe([dict(r) for r in cur.fetchall()])
                 conn.close()
             return JSONResponse({"entries": entries})
         except Exception as e:
@@ -962,16 +1224,37 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
     async def api_feed(since_id: int = 0):
         try:
             if _DB_PATH:
-                entries = _sqlite(
-                    "SELECT * FROM _tt_history WHERE id > ? ORDER BY id ASC LIMIT 50",
-                    (since_id,)
-                )
+                if _EXCLUDE_TABLES:
+                    placeholders = ",".join("?" * len(_EXCLUDE_TABLES))
+                    entries = _sqlite(
+                        f"SELECT * FROM _tt_history WHERE id > ? "
+                        f"AND table_name NOT IN ({placeholders}) "
+                        f"AND operation != 'BASELINE' ORDER BY id ASC LIMIT 50",
+                        (since_id, *_EXCLUDE_TABLES)
+                    )
+                else:
+                    entries = _sqlite(
+                        "SELECT * FROM _tt_history WHERE id > ? AND operation != 'BASELINE' ORDER BY id ASC LIMIT 50",
+                        (since_id,)
+                    )
             else:
                 from .pg_adapter import _connect, _dict_row
                 conn = _connect(_PG_CONN_STR)
                 cur = _dict_row(conn)
-                cur.execute("SELECT * FROM _tt_history WHERE id > %s ORDER BY id ASC LIMIT 50", (since_id,))
-                entries = [dict(r) for r in cur.fetchall()]
+                if _EXCLUDE_TABLES:
+                    placeholders = ",".join("%s" * len(_EXCLUDE_TABLES))
+                    cur.execute(
+                        f"SELECT * FROM _tt_history WHERE id > %s "
+                        f"AND table_name NOT IN ({placeholders}) "
+                        f"AND operation != 'BASELINE' ORDER BY id ASC LIMIT 50",
+                        (since_id, *_EXCLUDE_TABLES)
+                    )
+                else:
+                    cur.execute(
+                        "SELECT * FROM _tt_history WHERE id > %s AND operation != 'BASELINE' ORDER BY id ASC LIMIT 50",
+                        (since_id,)
+                    )
+                entries = _safe([dict(r) for r in cur.fetchall()])
                 conn.close()
             return JSONResponse({"entries": entries})
         except Exception as e:
@@ -987,6 +1270,20 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
                 samples = _sqlite(
                     "SELECT id, table_name, operation, checksum, created_at FROM _tt_history ORDER BY id LIMIT 12"
                 )
+            elif _PG_CONN_STR:
+                try:
+                    from .pg_adapter import _connect, _dict_row
+                    _c = _connect(_PG_CONN_STR)
+                    _cur = _dict_row(_c)
+                    _cur.execute(
+                        "SELECT id, table_name, operation, checksum, created_at "
+                        "FROM _tt_history ORDER BY id LIMIT 12"
+                    )
+                    samples = [{k: str(v) if not isinstance(v, (int, float, bool, type(None))) else v
+                                for k, v in r.items()} for r in _cur.fetchall()]
+                    _c.close()
+                except Exception:
+                    pass
             result["sample_entries"] = samples
             return JSONResponse(result)
         except Exception as e:
@@ -1010,6 +1307,8 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
                         return str(r[k])
                 return str(list(r.values())[0]) if r else ""
 
+            before = _safe(before)
+            after = _safe(after)
             before_ids = {row_key(r) for r in before}
             after_ids = {row_key(r) for r in after}
             return JSONResponse({
@@ -1027,20 +1326,76 @@ def create_app(db_path: str = None, pg_conn_str: str = None):
     async def api_report(report_type: str):
         try:
             from fastapi.responses import HTMLResponse as HR
-            if not _DB_PATH:
-                return JSONResponse({"error": "Reports require SQLite mode in this version"}, status_code=400)
-            report = SOC2Report(_DB_PATH)
-            if report_type == "integrity":
-                html = report.integrity_report()
-            elif report_type == "audit":
-                html = report.change_audit_report()
-            elif report_type == "retention":
-                html = report.retention_report(datetime.utcnow().strftime("%Y-%m-%d"))
-            else:
+            if report_type not in ("integrity", "audit", "retention"):
                 return JSONResponse({"error": "Unknown report type"}, status_code=400)
+
+            if _DB_PATH:
+                report = SOC2Report(_DB_PATH)
+                if report_type == "integrity":
+                    html = report.integrity_report()
+                elif report_type == "audit":
+                    html = report.change_audit_report()
+                else:
+                    html = report.retention_report(datetime.utcnow().strftime("%Y-%m-%d"))
+            else:
+                html = _pg_report(report_type)
             return HR(html)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/restore")
+    async def api_restore(request: Request):
+        """Re-insert a deleted row using the data captured at delete time."""
+        try:
+            body = await request.json()
+            history_id = int(body["history_id"])
+
+            # Fetch the history entry
+            if _DB_PATH:
+                rows = _sqlite("SELECT * FROM _tt_history WHERE id = ?", (history_id,))
+            else:
+                from .pg_adapter import _connect, _dict_row
+                _c = _connect(_PG_CONN_STR)
+                _cur = _dict_row(_c)
+                _cur.execute("SELECT * FROM _tt_history WHERE id = %s", (history_id,))
+                rows = [dict(r) for r in _cur.fetchall()]
+                _c.close()
+
+            if not rows:
+                return JSONResponse({"error": "History entry not found"}, status_code=404)
+
+            entry = rows[0]
+            if entry["operation"] != "DELETE":
+                return JSONResponse({"error": "Only DELETE entries can be restored"}, status_code=400)
+
+            old_data = json.loads(entry["old_data"])
+            table = entry["table_name"]
+
+            if _PG_CONN_STR:
+                from .pg_adapter import _connect, _dict_row
+                _c = _connect(_PG_CONN_STR)
+                _cur = _c.cursor()
+                # Use json_populate_record so PostgreSQL handles all type casting automatically
+                _cur.execute(
+                    f'INSERT INTO "{table}" SELECT * FROM json_populate_record(NULL::"{table}", %s) '
+                    f'ON CONFLICT DO NOTHING',
+                    (json.dumps(old_data, default=str),)
+                )
+                _c.commit()
+                _c.close()
+            else:
+                import sqlite3 as _sq
+                _c = _sq.connect(_DB_PATH)
+                cols = ", ".join(f'"{k}"' for k in old_data)
+                placeholders = ", ".join("?" for _ in old_data)
+                vals = list(old_data.values())
+                _c.execute(f'INSERT OR IGNORE INTO "{table}" ({cols}) VALUES ({placeholders})', vals)
+                _c.commit()
+                _c.close()
+
+            return JSONResponse({"restored": True, "table": table, "row_id": entry["row_id"]})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
 
     return app
 
@@ -1052,6 +1407,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8765,
     open_browser: bool = True,
+    exclude_tables: list = None,
 ):
     """Start the TimeTravel dashboard server."""
     if not HAS_FASTAPI:
@@ -1059,7 +1415,7 @@ def serve(
 
     import uvicorn
 
-    app = create_app(db_path, pg_conn_str)
+    app = create_app(db_path, pg_conn_str, exclude_tables=exclude_tables)
     db_label = os.path.basename(db_path) if db_path else "PostgreSQL"
 
     print(f"\n{'─'*52}")

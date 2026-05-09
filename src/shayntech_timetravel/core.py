@@ -82,8 +82,8 @@ class HashChain:
                    (table_name, row_id, operation, old_data, new_data, checksum, prev_checksum, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (table, row_id, operation,
-                 json.dumps(old_data) if old_data else None,
-                 json.dumps(new_data) if new_data else None,
+                 json.dumps(old_data, default=str) if old_data else None,
+                 json.dumps(new_data, default=str) if new_data else None,
                  checksum, prev, entry["timestamp"])
             )
             conn.commit()

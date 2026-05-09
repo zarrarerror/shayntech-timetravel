@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  timetravel:
+    build: .
+    image: shayntech-timetravel:latest
+    container_name: shayntech-timetravel
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # ── PostgreSQL mode (comment out to use SQLite) ──────────────────────
+      TT_PG_CONN: "${TT_PG_CONN}"
+      # ── SQLite mode (used when TT_PG_CONN is not set) ───────────────────
+      # TT_DB_PATH: /data/mydb.db
+      # ── Tables to skip tracking (session, cache, temp tables, etc.) ──────
+      # TT_EXCLUDE_TABLES: "${TT_EXCLUDE_TABLES}"
+    volumes:
+      - timetravel_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  timetravel_data:

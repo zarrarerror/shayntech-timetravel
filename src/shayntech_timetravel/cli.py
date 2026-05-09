@@ -87,7 +87,7 @@ def _cmd_init_sqlite(args):
 
 
 def _cmd_init_pg(args):
-    from .pg_adapter import PgTimeTravelDB
+    from .pg_adapter import PgTimeTravelDB, install_triggers
     db = PgTimeTravelDB(args.pg)
     tables = args.tables or db.get_tables()
     print(f"\n🔧 Initializing PostgreSQL database for time travel tracking...")
@@ -95,13 +95,26 @@ def _cmd_init_pg(args):
     print(f"   Target tables: {', '.join(tables[:10])}{' + more' if len(tables) > 10 else ''}")
 
     result = db.baseline(tables)
-    print(f"\n✅ TimeTravel initialized for PostgreSQL")
+    print(f"\n✅ Baseline complete")
     print(f"   {result['rows_recorded']} existing records tracked as baseline")
     print(f"   {result['tables_scanned']} tables scanned")
     if result['errors']:
         for e in result['errors'][:5]:
             print(f"   ⚠️  {e}")
     db.close()
+
+    exclude = [t.strip() for t in (args.exclude or "").split(",") if t.strip()]
+    print(f"\n🔌 Installing auto-capture triggers{' (excluding: '+', '.join(exclude)+')' if exclude else ''}...")
+    tr = install_triggers(args.pg, tables, exclude=exclude)
+    algo = tr["hash_algorithm"].upper()
+    if tr["installed"]:
+        print(f"   ✅ Triggers installed on {len(tr['installed'])} tables ({algo})")
+    if tr["skipped_already_existed"]:
+        print(f"   ⏭  {len(tr['skipped_already_existed'])} tables already had triggers")
+    if tr["errors"]:
+        for e in tr["errors"][:5]:
+            print(f"   ⚠️  {e}")
+    print(f"\n✅ TimeTravel ready — all future changes will be auto-captured from any source.")
 
 
 def cmd_query(args):
@@ -497,12 +510,14 @@ def cmd_serve(args):
     if not db_path and not pg:
         print("❌ Provide a database path (e.g. timetravel serve mydb.db) or --pg <conn_str>")
         sys.exit(1)
+    exclude = [t.strip() for t in (getattr(args, "exclude", "") or "").split(",") if t.strip()]
     serve(
         db_path=db_path,
         pg_conn_str=pg,
         host=args.host,
         port=args.port,
         open_browser=not args.no_browser,
+        exclude_tables=exclude or None,
     )
 
 
@@ -532,6 +547,7 @@ Examples:
     p_init.add_argument("db", nargs="?", help="Path to SQLite database")
     p_init.add_argument("--pg", help="PostgreSQL connection string")
     p_init.add_argument("--tables", nargs="*", help="Specific tables to track (default: all)")
+    p_init.add_argument("--exclude", default="", help="Comma-separated tables to skip (e.g. session,logs,cache)")
 
     # query
     p_query = sub.add_parser("query", help="Query data as of a point in time")
@@ -591,6 +607,7 @@ Examples:
     p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen on (default: 8765)")
     p_serve.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
+    p_serve.add_argument("--exclude", default="", help="Comma-separated tables to skip tracking (e.g. session,logs)")
     p_serve.set_defaults(func=cmd_serve)
 
     # Set defaults for all commands
